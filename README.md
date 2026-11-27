@@ -191,6 +191,7 @@ HockeyRoller/
 ├─ Resources/teams.csv       embedded NHL roster sheet
 ├─ Resources/teams_olympic.csv embedded 2026 Olympic roster sheet
 ├─ README.md
+├─ LICENSE                  Non-commercial - no profit
 ├─ build.ps1
 └─ .gitignore
 ```
