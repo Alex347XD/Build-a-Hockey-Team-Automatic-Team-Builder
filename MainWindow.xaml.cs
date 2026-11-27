@@ -42,6 +42,7 @@ public partial class MainWindow : Window
         UpdateElevationStatus();
         LegacyMouseEventCheck.IsChecked = InputSim.UseLegacyMouseEvent;
         InputSim.UseLegacyMouseEvent = LegacyMouseEventCheck.IsChecked == true;
+        _ = Task.Run(async () => { _roster = await TeamRoster.LoadAsync(); AppendLog($"Team roster: {_roster.Count} player(s) loaded."); });
     }
 
     // ---------------- ESC = stop rolling and close ----------------
@@ -279,6 +280,7 @@ public partial class MainWindow : Window
         _config.CardCount = CardCountCombo.SelectedIndex >= 0 ? CardCountCombo.SelectedIndex + 1 : 1;
         _config.CardLayout = ComboContent(CardLayoutCombo, "2 x 2 grid");
         InputSim.UseLegacyMouseEvent = LegacyMouseEventCheck.IsChecked == true;
+        _ = Task.Run(async () => { _roster = await TeamRoster.LoadAsync(); AppendLog($"Team roster: {_roster.Count} player(s) loaded."); });
         try { _config.Save(); AppendLog("Config saved."); }
         catch (Exception ex) { AppendLog("Save failed: " + ex.Message); }
         RefreshRarityCombos();
@@ -504,14 +506,6 @@ public partial class MainWindow : Window
 
 
 
-    private void ResetRarities_Click(object sender, RoutedEventArgs e)
-    {
-        _config.Rarities = RarityCatalog.Defaults();
-        RarityList.ItemsSource = null; RarityList.ItemsSource = _config.Rarities;
-        RefreshRarityCombos();
-        AppendLog("Rarity colours reset to defaults.");
-    }
-
     private void RefreshRarityCombos()
     {
         var names = _config.Rarities.Select(r => r.Name).ToList();
@@ -612,6 +606,10 @@ public partial class MainWindow : Window
     private uint _lastRegionHash;
     private uint _lastWinHash;
     private int _refreshesWithoutHit = 0;
+    private TeamRoster? _roster;
+    private readonly HashSet<string> _claimedPlayers = new();   // normalised names already claimed
+    private string _currentTeam = "";
+    private int _currentTeamYear = 0;
     private void ClickAt(IntPtr hwnd, int clientX, int clientY, int method = 0)
     {
         Win32.GetClientRect(hwnd, out var rc);
@@ -987,6 +985,42 @@ public partial class MainWindow : Window
         AppendLog($"Odds: refresh column = [{string.Join(", ", names)}]");
         AppendLog($"      target range = {range}");
         AppendLog($"      eligible in refresh odds = [{string.Join(", ", avail)}]  ->  {(avail.Count > 0 ? "REFRESH" : "REROLL")}");
+
+        // odds + sheet + current claimed:
+        //   the odds say which tiers this team can roll; the roster sheet says which
+        //   players those tiers actually contain; anything already claimed (or blocked)
+        //   can't be taken again. If EVERY eligible player in this team is already
+        //   owned, refreshing would only waste refreshes - reroll for a new team.
+        _currentTeam = ExtractTeamName(text);
+        _currentTeamYear = ExtractTeamYear(text);
+        bool allEligibleOwned = false;
+        if (avail.Count > 0 && _roster != null)
+        {
+            var players = _roster.TeamPlayers(_currentTeam, _currentTeamYear);
+            if (players.Count > 0)
+            {
+                var elig = players.Where(p => EligiblePlayer(p, tierMin, tierMax)).ToList();
+                int owned = elig.Count(p => _claimedPlayers.Contains(TeamRoster.Norm(p.Name)));
+                allEligibleOwned = elig.Count > 0 && owned >= elig.Count;
+                // per-rarity breakdown: how many of each tier are still claimable
+                string Rarity(TeamRoster.Player p) => !string.IsNullOrEmpty(p.Tier) ? p.Tier : (RarityCatalog.TierFromOvr(p.Ovr, false, false) ?? "?");
+                var perRarity = elig
+                    .GroupBy(Rarity, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => (Tier: g.Key, Count: g.Count(), Owned: g.Count(p => _claimedPlayers.Contains(TeamRoster.Norm(p.Name)))))
+                    .OrderByDescending(x => RarityCatalog.TierOrder(x.Tier))
+                    .ToList();
+                string breakdown = string.Join(", ", perRarity.Select(x => $"{x.Tier} {x.Count - x.Owned}/{x.Count}"));
+                AppendLog($"      roster[{_currentTeam}] = {players.Count} player(s), eligible={elig.Count}, already have={owned}");
+                AppendLog($"      available per rarity (claimable/eligible): {breakdown}");
+                if (allEligibleOwned)
+                    AppendLog("      all eligible players from this team are already claimed -> REROLL instead of refresh");
+            }
+            else
+            {
+                AppendLog($"      roster[{_currentTeam}] = (no sheet data)");
+            }
+        }
+
         if (names.Count == 0)
             AppendLog("      (nothing could be read from the refresh column - see odds_panel.png)");
         else if (avail.Count == 0)
@@ -994,7 +1028,45 @@ public partial class MainWindow : Window
 
         // close the odds panel (it is a modal that blocks the roll button)
         await CloseOddsPanelAsync(hwnd, token, new Rectangle(), 0, null);
-        return avail.Count > 0;
+        return avail.Count > 0 && !allEligibleOwned;
+    }
+
+    /// <summary>A roster player counts when its tier (from OVR) is inside the target range.</summary>
+    private bool EligiblePlayer(TeamRoster.Player p, int tierMin, int tierMax)
+    {
+        if (p.Ovr <= 0) return false;
+        string? tier = RarityCatalog.TierFromOvr(p.Ovr, false, false);
+        if (tier == null) return false;
+        int gi = RarityCatalog.GroupIndex(_config.Rarities, tier, _config.GroupRivalry);
+        if (gi < tierMin || gi > tierMax) return false;
+        // min OVR rule (any rarity) from the app
+        if (_config.MinOvr > 0 && p.Ovr < _config.MinOvr) return false;
+        return true;
+    }
+
+
+    /// <summary>Pulls the in-game team year (e.g. 1997) out of the odds panel text.</summary>
+    private static int ExtractTeamYear(string panelText)
+    {
+        if (string.IsNullOrWhiteSpace(panelText)) return 0;
+        // team keys look like "Anaheim Ducks 1997"; the panel shows the team + year
+        var ms = System.Text.RegularExpressions.Regex.Matches(panelText, @"\b(1[89]\d{2}|20\d{2})\b");
+        // prefer a 4-digit year that is not a count
+        foreach (System.Text.RegularExpressions.Match m in ms)
+            if (int.TryParse(m.Value, out int y) && y >= 1880 && y <= 2100) return y;
+        return 0;
+    }    /// <summary>Pulls the in-game team name out of the odds panel text.</summary>
+    private static string ExtractTeamName(string panelText)
+    {
+        if (string.IsNullOrWhiteSpace(panelText)) return "";
+        // the panel header shows "TEAM | REFRESH -- <Team Name>"
+        var m = System.Text.RegularExpressions.Regex.Match(panelText,
+            @"REFRESH\s*-+\s*(?<t>[^|]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (m.Success) return m.Groups["t"].Value.Trim();
+        m = System.Text.RegularExpressions.Regex.Match(panelText,
+            @"\bTeam\b\s*(?<t>[^|]+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        if (m.Success) return m.Groups["t"].Value.Trim();
+        return "";
     }
     private async Task CloseOddsPanelAsync(IntPtr hwnd, CancellationToken token, Rectangle oddsRect, uint beforeHash,
                                             System.Drawing.Point? detectedPanelX)
@@ -1069,12 +1141,29 @@ public partial class MainWindow : Window
         try
         {
             var prof = TierProfile.FromWindow(card, new Rectangle(0, 0, card.Width, card.Height));
-            return prof.RainbowBins >= 8;
+            return prof.RainbowBins >= 6 || prof.SpreadBins >= 8 || prof.Dispersion >= 0.45;
         }
         catch { return false; }
     }
 
-    private string? DetectTierShiny(Bitmap card, int rawOvr, bool vsSymbol, out bool shiny)
+
+    /// <summary>Reads the player name printed on a card.</summary>
+    private static async Task<string?> ReadPlayerNameAsync(Bitmap card)
+    {
+        try
+        {
+            if (card.Width < 30 || card.Height < 30) return null;
+            // the name sits in a band across the middle-lower part of the card
+            int top = (int)(card.Height * 0.52), bot = (int)(card.Height * 0.72);
+            using var band = WindowCapture.Crop(card, new Rectangle(0, top, card.Width, Math.Max(10, bot - top)));
+            string txt = await OcrService.RecognizeAsync(band);
+            var parts = txt.Replace("\r", " ").Replace("\n", " ").Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var name = string.Join(" ", parts.Where(p => p.Any(char.IsLetter)));
+            name = name.Trim();
+            return name.Length > 1 ? name : null;
+        }
+        catch { return null; }
+    }    private string? DetectTierShiny(Bitmap card, int rawOvr, bool vsSymbol, out bool shiny)
     {
         shiny = false;
         if (rawOvr <= 0) return null;
@@ -1087,7 +1176,7 @@ public partial class MainWindow : Window
         // tiers do not (Franchise is a dark-purple strip over black, etc.). Sample a few
         // pixels just inside the border AND really close to it: white inside + Prismatic
         // OVR => Prismatic. A shiny lower-tier card is not Prismatic.
-        bool isPrismatic = HasWhiteInsideBorder(card) && rawOvr >= 103 && rawOvr <= 109;
+        bool isPrismatic = rawOvr >= 105 && rawOvr <= 107 && HasWhiteInsideBorder(card);
         if (isPrismatic)
             return RarityCatalog.TierFromOvr(rawOvr, false, vsSymbol);   // Prismatic, never shiny
 
@@ -1744,6 +1833,20 @@ public partial class MainWindow : Window
                             AppendLog($"TARGET FOUND: {bestTarget.tier ?? "unknown tier"}{(ovrQualified ? $" (by OVR {bestTarget.ovr})" : "")} - clicked card {found.IndexOf(bestTarget) + 1}.");
                             _refreshesWithoutHit = 0;   // got what we came for
                             rerollNext = true;          // only one pick per team - reroll next
+                            // remember the player so it counts as "already claimed"
+                            try
+                            {
+                                var full = WindowCapture.Capture(w.Hwnd, _config.CaptureMethod);
+                                if (full != null)
+                                {
+                                    var sliceRect = new Rectangle(_config.CardX + bestTarget.slice.X, _config.CardY + bestTarget.slice.Y, bestTarget.slice.Width, bestTarget.slice.Height);
+                                    using var claimedCard = WindowCapture.Crop(full, sliceRect);
+                                    full.Dispose();
+                                    string? pname = await ReadPlayerNameAsync(claimedCard);
+                                    if (!string.IsNullOrWhiteSpace(pname)) _claimedPlayers.Add(TeamRoster.Norm(pname));
+                                }
+                            }
+                            catch { }
                             await Task.Delay(700, token);
                             await WaitForStableAsync(w.Hwnd, token);
                         }
