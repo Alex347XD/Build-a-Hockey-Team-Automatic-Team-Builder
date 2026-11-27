@@ -42,8 +42,8 @@ cards you actually want.
 ### Run from source
 
 ```powershell
-git clone <this repo>
-cd HockeyRoller
+git clone https://github.com/Alex347XD/Build-a-Hockey-Team-Automatic-Team-Builder.git
+cd Build-a-Hockey-Team-Automatic-Team-Builder
 dotnet restore
 dotnet run
 ```
