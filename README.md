@@ -4,8 +4,6 @@ A Windows desktop tool for **Build a Hockey Team!** (Roblox). It watches the gam
 rolls/refreshes for you, works out the **rarity** of every card that appears, and clicks the
 cards you actually want.
 
-![tabs](docs/screenshot.png)
-
 ---
 
 ## Features
@@ -14,14 +12,19 @@ cards you actually want.
 |---|---|
 | **Window picker** | Lists all visible top-level windows; pick the Roblox one. |
 | **Capture** | Screen-grab or `PrintWindow`; *Auto* grabs both and keeps the one with real picture content (works in windowed, borderless and exclusive fullscreen). |
-| **Point picking** | Click/drag on a captured preview to set the ROLL button, REFRESH button, ODDS button, ODDS close X, card region and odds region. |
-| **Tier detection** | **OVR only.** The rarity comes solely from the card's OVR number read by OCR, mapped to tier ranges. No reference pixel, no colour matching, no reference images. Shiny (+2 OVR) and Prismatic/Franchise rainbow are handled. |
-| **Blocked cards** | Detects the black diagonal ribbon (already on your team / position full) and skips those cards. |
-| **Target selection** | Only claims cards inside your **Min..Max** rarity range; picks the **highest rarity**, and for equal rarity the **higher OVR** number (read from the top-left of the card). An optional **Min OVR** sets a rating floor, and a checkbox additionally lets *any* rarity be taken when its rating is high enough. |
-| **Odds-aware rolling** | Reads the game's odds panel: if the *current* team can produce an eligible tier it uses **Refresh**, otherwise it **Rerolls**. The odds are only read once per team (refreshing keeps the same team/year). |
-| **Refresh cap** | After N refreshes without an eligible hit it rerolls for a new team. |
-| **Auto-stop** | Stops on the **TEAM COMPLETE** screen, when **rerolls or refreshes run out**, or when you press **ESC**. |
-| **Input** | Uses the legacy `mouse_event` API (`SendInput` is silently blocked on some systems), glides the pointer onto the target first so the game registers the hover, then presses. |
+| **Point picking** | Click/drag on a captured preview to set the ROLL button, REFRESH button, ODDS button, ODDS close X, card region and odds region. There is no separate dismiss point — **reroll/refresh dismisses** a card. |
+| **Tier detection** | **OVR only.** The rarity comes solely from the card's **OVR number read by OCR**, mapped to your tier ranges. No reference pixel, no colour matching, no reference images, no `tiercolours.txt`. |
+| **Shiny** | Shiny adds **+2 OVR**, detected by a rainbow border (scanned across the whole frame, not just one spot) excluding Prismatic; `o = rawOvr − 2`, then ranges on **base OVR**. **Prismatic-and-above can't be shiny.** |
+| **Prismatic vs shiny-Franchise** | Prismatic = white inside + rainbow border + OVR 105-107, never shiny. Franchise = dark-purple strip on black. Prismatic check only runs when in Prismatic range. |
+| **Blocked cards** | Detects the black diagonal **POSITION FILLED / ALREADY ON TEAM** ribbon (`blockedRibbon`) and skips those cards. Ribbon cards are still eligible for the Prismatic/shiny checks (a ribbon doesn't change rarity); it's not used as a rarity signal. |
+| **Target selection** | Only claims cards inside your **Min..Max** rarity range; picks the **highest rarity**, and for equal rarity the **higher OVR**. Optional **Min OVR**; **AcceptAnyTierByOvr** also takes any rarity at/above Min OVR; **OVR-only** ignores rarity for selection (rarity still drives Refresh). One pick per team, then reroll. |
+| **Odds-aware rolling** | Reads the game's odds panel, **THIS TEAM / REFRESH (right) column only**, line by line; odds read once per team. Smart mode Refreshes if an eligible tier is available, else Rerolls. |
+| **Don't waste refreshes** | **Odds + roster sheet + current claimed:** if every eligible-rarity player in the current team + year is already claimed, it **Rerolls instead of Refresh**. |
+| **Team roster sheet** | Per-team roster + rarity from a Google Sheet, **embedded in the exe**. `2026 Olympics Team [Country] 2026` ("Team USA 2026" → United States). |
+| **Refresh cap** | After N refreshes without an eligible hit it rerolls for a new team. On the cap-triggered cycle nothing is claimed unless a card is eligible. |
+| **Auto-stop** | Stops on the **TEAM COMPLETE** screen, when **rerolls or refreshes run out**, or when you press **ESC**. ESC stops rolling only; the tool stays open. |
+| **Input** | Legacy `mouse_event` (`SendInput` is silently blocked on some systems); glides the pointer onto the target first, then presses. |
+| **Dismiss** | No separate dismiss point in game; dismissing = reroll/refresh. |
 
 ---
 
@@ -71,16 +74,14 @@ Output: `bin\Release\net9.0-windows10.0.19041.0\win-x64\publish\HockeyRoller.exe
    * **Capture Preview** — a screenshot of the game appears.
    * Pick **Roll Button**, **Refresh Button**, **Odds Button** and **Odds Close point**.
    * Pick the **Card Region** — drag over the block where the 2×2 cards appear.
-     (the four cards are not perfectly aligned). The red circles in the preview show the spot
-     that is sampled on every card.
    * Pick the **Odds Region** over the rarity list in the **THIS TEAM** column.
    * Set **Cards in region = 4**, **Layout = 2 x 2 grid**.
-4. **Tab 2 – Rarities** – choose **Min** and **Max** rarity (the tiers are pre-configured).
+   * **No reference pixel, no rarity colours, no reference images.**
+4. **Tab 2 – Rarities** – choose **Min** and **Max** rarity (tiers are pre-configured), plus Min OVR / OVR-only / accept-any-by-OVR.
 5. **Tab 3 – Run** – press **Start Rolling**.
 
-Useful buttons: **Test Click** (moves the pointer onto the button and clicks it, so you can
-see whether the coordinates are right), **Test Detection** (reports what the tool sees),
-**Save Debug Shot** (saves the game window with markers on every configured point).
+Useful buttons: **Test Click**, **Test Detection**, **Save Debug Shot** (`debug_screen.png` + `debug_cards.png`),
+**Save** config.
 
 ### Keyboard
 
@@ -88,85 +89,12 @@ see whether the coordinates are right), **Test Detection** (reports what the too
 
 ---
 
-## Tier colours (the only rarity signal)
-
-The rarity of a card is decided by **one pixel**: the *reference pixel* on the card. The
-colour of that pixel is compared with the tier colours and the closest tier wins.
-
-```
-%APPDATA%\HockeyRoller\tiercolours.txt
-```
-
-```
-Bronze           = #C8A882
-Silver           = #F0F0F0
-Gold             = #E3D3A8
-Diamond          = #B0ECE4
-Icon             = #C4B4E4
-Mythic           = #EFA8A8
-Franchise        = #CFC0E8
-Prismatic        = #2A3A8C
-Limit Breaker    = #A9C4F2
-Generational     = #E8C15A
-Rivalry          = #EDE3C8
-Rivalry Captain  = #EDE3C8
-```
-
-The file is read every time the tool starts — edit it and restart, or use
-**Rarities → Edit colour file** to open it in Notepad.
-
-A card is only given a tier when
-
-* the colour is within **Max colour distance** (default 35) of the tier colour,
-* it differs from that colour by no more than **Channel tolerance** (default 28) in *any*
-  single R/G/B channel, and
-* it is at least **Ambiguity margin** (default 12) closer to that tier than to any other one.
-
-Otherwise the card is reported as *no match* and is never claimed. The margin matters because
-Icon `#C4B4E4` and Franchise `#CFC0E8` are only 17 apart.
-
-All three numbers are on the **Setup** tab, so they can be tightened or loosened without
-rebuilding.
-
-A **holo/shiny** card can have its own colour on a second line:
-
-```
-Mythic shiny = #EFA8A8
-```
-
-Both variants are matched and the closer one wins, so no extra detection is needed.
-
-### Placing the reference pixel on every card
-
-The four cards are not aligned the same way inside the 2×2 grid, so each card gets its own
-spot. Two ways to do it:
-
-* **By hand** – Setup → *Reference pixel → Pick on preview*, then click the badge text on
-  each card. A red circle in the preview shows the spot that is sampled on every card.
-* **Automatically** – Setup → **Auto-assign from debug capture**. The tool reads the debug
-  picture (`cards_last.png`, the exact frame it last looked at), finds the OVR number on
-  every card and puts the reference pixel on the position badge right below it. Card 2 is
-  the anchor: the spot you picked by hand is kept as long as it is still on the badge.
-
-### Teaching the tool the colours the game really shows
-
-The colours in the file are the reference colours. If the game renders a tier slightly
-differently, let the tool read the colours straight from the cards on screen:
-
-1. **Setup → Capture Preview** with the cards on screen
-2. **Rarities → Learn ref colours from cards** — label each card with its tier
-
-The sampled colours are written to `tiercolours.txt` and used from then on. Cards whose
-reference spot was never picked are located automatically.
-
----
-
 ## Tier detection (OVR only)
 
-Rarity comes **only** from the card's **OVR number** (read by OCR). No reference pixel, no
-colour matching, no reference images, no frame colour. The number is mapped to a tier:
+Rarity comes **only** from the card's **OVR number** (read by OCR). No reference pixel, no colour
+matching, no reference images, no frame colour, no `tiercolours.txt`. **Applied to base OVR; shiny is not part of any range.**
 
-| Tier | OVR |
+| Tier | OVR (base) |
 |---|---|
 | Rivalry Captain | 116 |
 | Generational | 112-115 |
@@ -181,11 +109,88 @@ colour matching, no reference images, no frame colour. The number is mapped to a
 | Silver | 75-82 |
 | Bronze | 70-74 |
 
-* **Shiny** (rainbow border on a non-Prismatic card) adds **+2 OVR**; it is detected by a
-  rainbow border and a check that pixels just inside it are not white.
-* **Prismatic** is a white body inside a rainbow border and can **never** be shiny; a shiny
-  lower-tier card (e.g. shiny Franchise at raw OVR 103-106) is still that lower tier.
-* **Prismatic-and-above can never be shiny.**
-* No card exists at OVR 100; **116 is the highest**.
+* **Shiny adds +2 OVR.** `o = rawOvr − 2` when shiny; ranges apply to base. e.g. shiny Silver 82→84 → Silver; shiny Franchise 104→106 → Franchise; shiny Rivalry Captain → 116.
+* **Shiny = rainbow border on a non-Prismatic card**, scanned across the whole frame (multiple offsets, multiple hue signals); **not** Prismatic. The shiny check runs regardless; the **Prismatic check only runs when in Prismatic range**.
+* **Prismatic** = white inside + rainbow border + OVR 105-107, **never shiny**. **Prismatic-and-above can't be shiny.** (Pixels just inside + really close to the border, majority white; ribbon cards not excluded; offsets higher/lower to avoid a diagonal ribbon's white.)
+* **Franchise** = dark-purple strip on black (not white inside).
+* **Rivalry 112** needs a **vs symbol bottom right**; 112 without it is Generational. **Rivalry Captain = every 116.**
+* **No card at OVR 100; 116 is the highest.**
+* `blockedRibbon` is separate (not a rarity signal).
 
 ---
+
+## Team roster sheet (still-claimable → reroll vs refresh)
+
+Smart mode combines **odds + sheet + current claimed**:
+
+* **Odds** – current team + eligible tiers in the **THIS TEAM / REFRESH** column.
+* **Sheet** – per-team roster (name, OVR, position, year, rarity-column) + current team + year (`Team [Country] 2026`; `Team USA 2026` = United States; `Team [Country]` = sheet `2026 Olympics Team [Country]`).
+* **Current claimed** – players already claimed this session (`_claimedPlayers`, normalised; claimed-card names read by OCR) + `blockedRibbon`.
+
+**If `avail` has an eligible tier but every eligible-rarity player in the current team + year is already owned → REROLL instead of REFRESH.** Logs `eligible=N, already have=M` + per-rarity `claimable/eligible`.
+
+**Data source.** `TeamRoster`. Reads the shared Google Sheet (`gid=0` + Olympic `gid=1630519299`), **and ships embedded:** `Resources/teams.csv` + `Resources/teams_olympic.csv`. Order: try refresh online → cache `%APPDATA%\HockeyRoller\teams.csv` → **embedded**. Offline works; nothing to find. **12 Olympic teams × 25.** No `References/`, no `tiercolours.txt`.
+
+---
+
+## Configuration
+
+Settings are stored in `%APPDATA%\HockeyRoller\config.json`. The **Setup** tab's **Save** writes them.
+
+| Setting | Meaning |
+|---|---|
+| Delay after roll (ms) | minimum wait after clicking before looking for cards |
+| Wait for animation (max ms) | ceiling for the "wait until the screen stops changing" check |
+| Refresh cap | refreshes without an eligible hit before forcing a reroll (0 = no cap) |
+| Strategy | Smart (odds + roster) / always refresh / always reroll |
+| Min / Max rarity | target range |
+| Min OVR (any rarity) | rating floor (0 = off) |
+| Also take anything at/above that OVR | `AcceptAnyTierByOvr` |
+| OVR only - ignore rarity completely | `OvrOnly` (still uses rarity + odds for Refresh) |
+| Blocked region / manual blocked | optional extra "already on team" check |
+| Capture method | Auto / Screen grab / PrintWindow |
+| Use mouse_event | input API |
+| Stop on TEAM COMPLETE | stop when team is finished |
+
+**Removed:** reference pixel + per-card picks, reference colours/images, `tiercolours.txt`, `TierColourFile`, `RefPixel`, `ReferenceLibrary`, `CardFinder`, `SparkleDetector`, `MatchText`, `MatchThreshold`, `ReferenceThreshold`, `AmbiguityMargin`, `RefMaxDistance`, `RefChannelTolerance`, `RefPixelRadius`, `RaritySample`, `ResetRarities`, **`DismissAsync` / `DismissX/Y` / `DismissWithEsc` / dismiss UI**.
+
+---
+
+## Troubleshooting
+
+**Nothing happens when it clicks.** `mouse_event`; run as administrator if Roblox is elevated; not exclusive fullscreen.
+
+**The preview only shows part of the game.** Use **Method = Auto**; *Screen grab* needs visible/unobstructed; *PrintWindow* can truncate DirectX.
+
+**A card is not detected / wrong tier.** Check `cards_last.png` (`%APPDATA%\HockeyRoller\`) + log `ovr=` + `SHINY+2` + `vs` + `blockedRibbon`. OVR must read; `ovr=0` → no tier. Shiny/Prismatic share a rainbow; Prismatic needs white inside + OVR 105-107.
+
+**Rivalry.** `ovr=112` + `vs`; else Generational. **Rivalry Captain = 116.**
+
+**Odds not read.** Windows OCR, line by line, THIS TEAM / REFRESH column. See `odds_panel.png`. `OddsClose` point for the modal.
+
+**No reroll-instead-of-refresh.** Needs current team match in the roster + no remaining claimable eligible. See `roster[...]`, `available per rarity`.
+
+---
+
+## Project layout
+
+```
+HockeyRoller/
+├─ MainWindow.xaml(.cs)      UI, run loop, OVR + shiny/Prismatic detection, target selection
+├─ Models/Config.cs          config + RarityCatalog (TierFromOvr ranges, TierOrder)
+├─ Services/
+│  ├─ Win32.cs               P/Invoke (windows, input, elevation)
+│  ├─ WindowCapture.cs       screen / PrintWindow capture
+│  ├─ InputSim.cs            mouse + keyboard injection
+│  ├─ OcrService.cs          Windows.Media.Ocr wrapper
+│  ├─ OddsReader.cs          line-by-line OCR of the odds panel
+│  ├─ ReferenceProfile.cs    TierProfile for the shiny/rainbow check
+│  ├─ ColorMatch.cs          colour maths (HSV, averaging)
+│  ├─ DiagonalStripDetector.cs  POSITION FILLED / ALREADY ON TEAM ribbon
+│  └─ TeamRoster.cs          roster sheet + claimable-per-rarity
+├─ Resources/teams.csv       embedded NHL roster sheet
+├─ Resources/teams_olympic.csv embedded 2026 Olympic roster sheet
+├─ README.md
+├─ build.ps1
+└─ .gitignore
+```
