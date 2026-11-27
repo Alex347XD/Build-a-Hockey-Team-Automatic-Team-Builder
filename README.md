@@ -13,7 +13,7 @@ cards you actually want.
 | **Window picker** | Lists all visible top-level windows; pick the Roblox one. |
 | **Capture** | Screen-grab or `PrintWindow`; *Auto* grabs both and keeps the one with real picture content (works in windowed, borderless and exclusive fullscreen). |
 | **Point picking** | Click/drag on a captured preview to set the ROLL button, REFRESH button, ODDS button, ODDS close X, card region and odds region. There is no separate dismiss point — **reroll/refresh dismisses** a card. |
-| **Tier detection** | **OVR only.** The rarity comes solely from the card's **OVR number read by OCR**, mapped to your tier ranges. No reference pixel, no colour matching, no reference images, no `tiercolours.txt`. |
+| **Tier detection** | **OVR only.** The rarity comes solely from the card's **OVR number read by OCR**, mapped to your tier ranges. |
 | **Shiny** | Shiny adds **+2 OVR**, detected by a rainbow border (scanned across the whole frame, not just one spot) excluding Prismatic; `o = rawOvr − 2`, then ranges on **base OVR**. **Prismatic-and-above can't be shiny.** |
 | **Prismatic vs shiny-Franchise** | Prismatic = white inside + rainbow border + OVR 105-107, never shiny. Franchise = dark-purple strip on black. Prismatic check only runs when in Prismatic range. |
 | **Blocked cards** | Detects the black diagonal **POSITION FILLED / ALREADY ON TEAM** ribbon (`blockedRibbon`) and skips those cards. Ribbon cards are still eligible for the Prismatic/shiny checks (a ribbon doesn't change rarity); it's not used as a rarity signal. |
