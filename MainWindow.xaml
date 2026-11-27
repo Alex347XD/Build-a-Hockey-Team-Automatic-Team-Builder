@@ -1,7 +1,8 @@
-﻿<Window x:Class="HockeyRoller.MainWindow"
+<Window x:Class="HockeyRoller.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Hockey Roller - Auto Card Roller" Height="900" Width="1000"
+        Icon="icon.ico"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -38,7 +39,6 @@
                                     <TextBlock Text="Card Region:" Width="140"/>
                                     <TextBox x:Name="CardRegionText" Width="160" IsReadOnly="True"/>
                                     <Button Content="Pick Card Region" Click="PickCardRegion_Click" Margin="5,0"/>
-                                    <TextBlock Text="(drag a rectangle over where the card appears)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <TextBlock Text="Cards in region:" Width="140"/>
@@ -55,20 +55,6 @@
                                         <ComboBoxItem Content="2 x 2 grid"/>
                                     </ComboBox>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <TextBlock Text="Rarity Sample (in card):" Width="140"/>
-                                    <TextBox x:Name="RaritySampleText" Width="160" IsReadOnly="True"/>
-                                    <Button Content="Pick Rarity Sample" Click="PickRaritySample_Click" Margin="5,0"/>
-                                    <TextBlock Text="(small box on the rarity color area)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <TextBlock Text="Dismiss point:" Width="140"/>
-                                    <TextBox x:Name="DismissPtText" Width="160" IsReadOnly="True"/>
-                                    <Button Content="Pick Dismiss" Click="PickDismiss_Click" Margin="5,0"/>
-                                    <Button Content="Clear" Click="ClearDismiss_Click" Margin="0,0"/>
-                                    <CheckBox x:Name="DismissEscCheck" Content="or press ESC" VerticalAlignment="Center" Margin="10,0,0,0"/>
-                                </StackPanel>
-                                <TextBlock Text="Optional: the Reroll/Refresh button also dismisses the current card, so leaving this unset is fine." FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
                             </StackPanel>
                         </GroupBox>
 
@@ -88,7 +74,6 @@
                                     <TextBlock Text="Odds Button:" Width="140"/>
                                     <TextBox x:Name="OddsBtnPtText" Width="160" IsReadOnly="True"/>
                                     <Button Content="Pick Odds Btn" Click="PickOddsBtn_Click" Margin="5,0"/>
-                                    <TextBlock Text="(opens odds menu; optional)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <TextBlock Text="Odds Region:" Width="140"/>
@@ -99,13 +84,11 @@
                                     <TextBlock Text="Odds Close point:" Width="140"/>
                                     <TextBox x:Name="OddsClosePtText" Width="160" IsReadOnly="True"/>
                                     <Button Content="Pick Odds Close" Click="PickOddsClose_Click" Margin="5,0"/>
-                                    <TextBlock Text="(optional - click this to shut the odds panel)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <TextBlock Text="THIS TEAM tab:" Width="140"/>
                                     <TextBox x:Name="OddsTeamTabPtText" Width="160" IsReadOnly="True"/>
                                     <Button Content="Pick THIS TEAM tab" Click="PickOddsTeamTab_Click" Margin="5,0"/>
-                                    <TextBlock Text="(refresh odds for the current team)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
                                 </StackPanel>
                                 <TextBlock Text="The odds region should cover the refresh-odds list in the THIS TEAM column." FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
@@ -133,25 +116,15 @@
                                     <TextBlock Text="Delay after roll (ms):" Width="180"/>
                                     <TextBox x:Name="DelayText" Width="80" Text="1500"/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                    <TextBlock Text="Color match threshold:" Width="180"/>
-                                    <TextBox x:Name="ThresholdText" Width="80" Text="60"/>
-                                    <TextBlock Text="(lower = stricter)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
-                                </StackPanel>
+
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="Wait for animation (max ms):" Width="180"/>
                                     <TextBox x:Name="SettleText" Width="80" Text="9000"/>
-                                    <TextBlock Text="(tool waits until the screen stops changing)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
                                 </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                    <TextBlock Text="Reference match threshold:" Width="180"/>
-                                    <TextBox x:Name="RefThresholdText" Width="80" Text="45"/>
-                                    <TextBlock Text="(only used when reference images are loaded)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
-                                </StackPanel>
+
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="Refresh cap:" Width="180"/>
                                     <TextBox x:Name="RefreshCapText" Width="80" Text="0"/>
-                                    <TextBlock Text="(refreshes without an eligible hit before a reroll; 0 = no cap)" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="5,0"/>
                                 </StackPanel>
                             </StackPanel>
                         </GroupBox>
@@ -181,7 +154,7 @@
                                             </Rectangle.Height>
                                         </Rectangle>
                                         <Rectangle x:Name="PreviewRect" Stroke="Red" StrokeThickness="2" Fill="#33FF0000" Visibility="Collapsed" IsHitTestVisible="False"/>
-                                    </Canvas>
+                                                                                                                                                                                                    </Canvas>
                                 </ScrollViewer>
                                 <TextBlock x:Name="PickStatusText" Text="Pick mode: none" FontSize="11" Foreground="Blue" Margin="0,5,0,0"/>
                             </StackPanel>
@@ -202,27 +175,16 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
-                        <Button Content="Assign current card color" Click="AssignCurrentCard_Click" Margin="0,0,5,0"/>
-                        <Button Content="Add as alt colour" Click="AssignAltColor_Click" Margin="0,0,5,0"/>
-                        <Button Content="Sample from preview" Click="SampleColor_Click" Margin="0,0,5,0"/>
                         <Button Content="Reset to defaults" Click="ResetRarities_Click" Margin="0,0,5,0"/>
-                        <Button Content="Learn colours from odds" Click="LearnFromOdds_Click" Margin="0,0,5,0"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,10">
-                        <Button Content="Open reference folder" Click="OpenReferenceFolder_Click" Margin="0,0,5,0"/>
-                        <Button Content="Reload references" Click="ReloadReferences_Click" Margin="0,0,5,0"/>
                         <TextBlock x:Name="ReferenceText" FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="10,0" TextWrapping="Wrap" MaxWidth="600"/>
                     </StackPanel>
                     <ListBox x:Name="RarityList" Grid.Row="2">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal">
-                                    <Rectangle Width="20" Height="20" Margin="0,0,5,0">
-                                        <Rectangle.Fill>
-                                            <SolidColorBrush Color="{Binding DisplayColor}"/>
-                                        </Rectangle.Fill>
-                                    </Rectangle>
-                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" Width="150"/>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -233,6 +195,12 @@
                             <TextBlock Text="Min rarity (target lower bound):" Width="220"/>
                             <ComboBox x:Name="MinRarityCombo" Width="200"/>
                         </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <TextBlock Text="Min OVR (any rarity):" Width="220"/>
+                            <TextBox x:Name="MinOvrText" Width="60" Text="0"/>
+                        </StackPanel>
+                        <CheckBox x:Name="AcceptAnyByOvrCheck" Content="Also take anything at/above that OVR, whatever the rarity" IsChecked="True" Margin="220,4,0,0"/>
+                        <CheckBox x:Name="OvrOnlyCheck" Content="OVR only - ignore rarity completely, take anything at/above that OVR" Margin="220,4,0,0"/>
                         <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                             <TextBlock Text="Max rarity (target upper bound):" Width="220"/>
                             <ComboBox x:Name="MaxRarityCombo" Width="200"/>
@@ -250,12 +218,7 @@
                         <Button x:Name="StopBtn" Content="Stop" Click="Stop_Click" Width="80" IsEnabled="False" Margin="0,0,10,0"/>
                         <Button Content="Test Detection" Click="TestDetection_Click" Width="120" Margin="0,0,10,0"/>
                         <Button Content="Test Click" Click="TestClick_Click" Width="100" Margin="0,0,10,0"/>
-                        <TextBlock Text="Detection:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                        <ComboBox x:Name="DetectModeCombo" Width="190">
-                            <ComboBoxItem Content="Auto (OCR, then colour)"/>
-                            <ComboBoxItem Content="OCR only"/>
-                            <ComboBoxItem Content="Colour only"/>
-                        </ComboBox>
+                        <TextBlock Text="Rarity comes from the reference pixel only." FontSize="11" Foreground="Gray" VerticalAlignment="Center" Margin="0,0,10,0"/>
                         <CheckBox x:Name="MinimizeWhileRunningCheck" Content="Minimize tool while rolling" IsChecked="True" VerticalAlignment="Center" Margin="10,0,0,0"/>
                         <CheckBox x:Name="LegacyMouseEventCheck" Content="Use mouse_event API" IsChecked="True" VerticalAlignment="Center" Margin="10,0,0,0" ToolTip="SendInput is silently blocked on some systems - mouse_event works everywhere."/>
                         <CheckBox x:Name="DoublePressCheck" Content="Press twice" VerticalAlignment="Center" Margin="10,0,0,0" ToolTip="Only needed if the first press is swallowed to focus the window."/>

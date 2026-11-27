@@ -81,25 +81,26 @@ public class AppConfig
     public int DetectMode { get; set; } = 0;
     // treat Rivalry and Rivalry Captain as the same target group
     public bool GroupRivalry { get; set; } = true;
-    public int RaritySampleX { get; set; } // relative to card region
-    public int RaritySampleY { get; set; }
-    public int RaritySampleW { get; set; } = 20;
-    public int RaritySampleH { get; set; } = 20;
-    public int DismissX { get; set; } = -1;
-    public int DismissY { get; set; } = -1;
-    public bool DismissWithEsc { get; set; } = false;
+    // only accept cards with at least this OVR (0 = no minimum)
+    public int MinOvr { get; set; } = 0;
+    // also accept any rarity as long as the OVR is high enough
+    public bool AcceptAnyTierByOvr { get; set; } = true;
+    // ignore the rarity completely: only the OVR decides what gets taken
+    public bool OvrOnly { get; set; } = false;
+    // where the reference pixel sits on a card (0..1 of the card width/height)
+    // per-card overrides (cards are not perfectly aligned in the grid); -1 = use the
+    // global position above
     public int DelayMs { get; set; } = 1200;
     // max time to wait for the game to finish animating (screen stops changing)
     public int SettleMaxMs { get; set; } = 5000;
     // max consecutive refreshes without an eligible card before forcing a reroll (0 = no cap)
-    public int RefreshCap { get; set; } = 0;
     // stop rolling when the "TEAM COMPLETE" screen appears
+    public int RefreshCap { get; set; } = 0;
     public bool StopOnTeamComplete { get; set; } = true;
-    public int MatchThreshold { get; set; } = 60;
     // max distance for a reference-image match to be accepted
-    public int ReferenceThreshold { get; set; } = 40;
-    // max distance for a card to be actually claimed (stricter = safer)
-    public int ClaimMaxDistance { get; set; } = 32;
+    // how much closer the best tier must be than the runner-up (colour distance)
+    // max colour distance for the reference pixel to count as a tier colour
+    // the pixel may not differ from the tier colour by more than this in ANY single channel
     public List<RarityColor> Rarities { get; set; } = new();
     public string MinRarity { get; set; } = "";
     public string MaxRarity { get; set; } = "";
@@ -144,10 +145,13 @@ public class IntPtrHwnd
 /// <summary>Built-in rarity tiers for Build A Hockey Team, lowest to highest.</summary>
 public static class RarityCatalog
 {
-    public record Tier(string Name, int R, int G, int B, bool MultiHue, int BodyR, int BodyG, int BodyB, bool RequireRedYellow, params string[] Patterns);
+    public record Tier(string Name, int R, int G, int B, bool MultiHue, int BodyR, int BodyG, int BodyB, bool RequireRedYellow, params string[] Patterns)
+    {
+    }
 
     // Frame + body colours learned from reference card art. Can be re-learned in-app
     // with "Assign current card color" (one click per tier).
+    // RefR/G/B = the colour at the reference pixel for that tier.
     public static readonly Tier[] Tiers = new[]
     {
         new Tier("Bronze",           160,  90,  45, false,  70,  40,  30, false, "bronze"),
@@ -160,8 +164,8 @@ public static class RarityCatalog
         new Tier("Prismatic",        255, 255, 255, true,  245, 245, 245, false, "prismatic"),
         new Tier("Limit Breaker",      27,  58, 143, false,  10,  30,  80, false, "limit breaker", "limitbreaker", "limit-breaker"),
         new Tier("Generational",     230,  70, 150, false, 224,  64, 154, false, "generational"),
-        new Tier("Rivalry",          155,  37,  54, false, 198, 142,  16, true,  "rivalry"),
-        new Tier("Rivalry Captain",  155,  37,  54, false, 198, 142,  16, true,  "rivalry captain", "rivalrycaptain", "captain"),
+        new Tier("Rivalry",          155,  37,  54, false, 198, 142,  16, true, "rivalry"),
+        new Tier("Rivalry Captain",  155,  37,  54, false, 198, 142,  16, true, "rivalry captain", "rivalrycaptain", "captain"),
     };
 
     public static List<RarityColor> Defaults()
@@ -176,7 +180,7 @@ public static class RarityCatalog
                 HasBody = true,
                 BodyR = t.BodyR, BodyG = t.BodyG, BodyB = t.BodyB,
                 RequireRedYellow = t.RequireRedYellow,
-                Patterns = t.Patterns
+                Patterns = t.Patterns,
             });
         return list;
     }
@@ -216,6 +220,49 @@ public static class RarityCatalog
             if (ib < 0) ib = int.MaxValue;
             return ia.CompareTo(ib);
         });
+    }
+
+    /// <summary>Shiny adds +2 OVR; no card is at 100; 116 is the highest OVR.</summary>
+    public const int OvrShinyBonus = 2;
+
+    /// <summary>
+    /// The tier, decided by ONE thing only: the card's OVR number.
+    /// Rivalry Captain 116 | Generational 112-115 | Rivalry 112 + vs | Limit Breaker 108-111 |
+    /// Prismatic 105-107 | Franchise 101-104 | Mythic 99 | Icon 95-98 | Diamond 90-94 |
+    /// Gold 83-89 | Silver 75-82 | Bronze 70-74.  A shiny card adds +2 OVR first.
+    /// </summary>
+    public static string? TierFromOvr(int ovr, bool shiny, bool vsSymbol)
+    {
+        if (ovr <= 0) return null;
+        int o = shiny ? ovr - OvrShinyBonus : ovr;
+        if (o < 0) o = 0;
+
+        if (o >= 116) return "Rivalry Captain";              // 116 is the highest; every 116 is a Rivalry Captain
+        if (o == 112 && vsSymbol) return "Rivalry";           // 112 + vs symbol (bottom right)
+        if (o >= 112 && o <= 115) return "Generational";      // 112-115 (112 without a vs symbol is Generational)
+        if (o >= 108 && o <= 111) return "Limit Breaker";     // 108-111
+        if (o >= 105 && o <= 107) return "Prismatic";         // 105-107
+        if (o >= 101 && o <= 104) return "Franchise";         // 101-104
+        if (o == 99) return "Mythic";                         // 99   (no card at 100)
+        if (o >= 95 && o <= 98) return "Icon";                // 95-98
+        if (o >= 90 && o <= 94) return "Diamond";             // 90-94
+        if (o >= 83 && o <= 89) return "Gold";                // 83-89
+        if (o >= 75 && o <= 82) return "Silver";              // 75-82
+        if (o >= 70 && o <= 74) return "Bronze";              // 70-74
+        return null;
+    }
+
+    /// <summary>Prismatic tier and everything above it (those cards can never be shiny).</summary>
+    public static readonly string[] PrismaticAndAbove =
+    { "Prismatic", "Limit Breaker", "Generational", "Rivalry", "Rivalry Captain" };
+
+    /// <summary>Canonical order index of a tier name (-1 when unknown).</summary>
+    public static int TierOrder(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return -1;
+        for (int i = 0; i < Tiers.Length; i++)
+            if (string.Equals(Tiers[i].Name, name, StringComparison.OrdinalIgnoreCase)) return i;
+        return -1;
     }
 
     /// <summary>Tiers that are visually near-identical and are treated as one target group.</summary>

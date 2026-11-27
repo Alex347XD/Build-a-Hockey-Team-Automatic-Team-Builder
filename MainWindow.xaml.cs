@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -42,7 +42,6 @@ public partial class MainWindow : Window
         UpdateElevationStatus();
         LegacyMouseEventCheck.IsChecked = InputSim.UseLegacyMouseEvent;
         InputSim.UseLegacyMouseEvent = LegacyMouseEventCheck.IsChecked == true;
-        LoadReferences();
     }
 
     // ---------------- ESC = stop rolling and close ----------------
@@ -188,46 +187,27 @@ public partial class MainWindow : Window
             if (CardLayoutCombo.Items[i] is ComboBoxItem ci && ci.Content?.ToString() == _config.CardLayout)
             { CardLayoutCombo.SelectedIndex = i; break; }
         if (CardLayoutCombo.SelectedIndex < 0) CardLayoutCombo.SelectedIndex = 2;   // 2 x 2 grid
-        RaritySampleText.Text = _config.RaritySampleW == 0 ? "" : $"{_config.RaritySampleX},{_config.RaritySampleY} {_config.RaritySampleW}x{_config.RaritySampleH}";
-        DismissPtText.Text = _config.DismissX < 0 ? "" : $"{_config.DismissX},{_config.DismissY}";
         DelayText.Text = _config.DelayMs.ToString();
-        ThresholdText.Text = _config.MatchThreshold.ToString();
         SettleText.Text = _config.SettleMaxMs.ToString();
         if (_config.SettleMaxMs <= 0) _config.SettleMaxMs = 5000;
-        RefThresholdText.Text = _config.ReferenceThreshold.ToString();
         RefreshCapText.Text = _config.RefreshCap.ToString();
         StrategyCombo.SelectedIndex = _config.Strategy;
-        DismissEscCheck.IsChecked = _config.DismissWithEsc;
         GroupRivalryCheck.IsChecked = _config.GroupRivalry;
+        MinOvrText.Text = _config.MinOvr.ToString();
+        AcceptAnyByOvrCheck.IsChecked = _config.AcceptAnyTierByOvr;
+        OvrOnlyCheck.IsChecked = _config.OvrOnly;
         CaptureMethodCombo.SelectedIndex = _config.CaptureMethod;
-        DetectModeCombo.SelectedIndex = _config.DetectMode;
         RarityList.ItemsSource = null;
         RarityList.ItemsSource = _config.Rarities;
     }
 
     private bool _updatingLayout;
-
-    /// <summary>Reads the selected combo item's Content (not ToString(), which yields the type name).</summary>
     private static string ComboContent(ComboBox combo, string fallback)
     {
         if (combo.SelectedItem is ComboBoxItem item && item.Content != null)
             return item.Content.ToString() ?? fallback;
         if (combo.SelectedItem is string s) return s;
         return fallback;
-    }
-
-    private async Task DismissAsync(IntPtr hwnd, CancellationToken token)
-    {
-        if (_config.DismissWithEsc)
-        {
-            InputSim.PressEscape();
-            await Task.Delay(400, token);
-        }
-        else if (_config.DismissX >= 0)
-        {
-            ClickAt(hwnd, _config.DismissX, _config.DismissY);
-            await Task.Delay(400, token);
-        }
     }
 
     private void CardLayout_Changed(object sender, RoutedEventArgs e)
@@ -286,17 +266,16 @@ public partial class MainWindow : Window
         var w = SelectedWindow();
         if (w != null) { _config.Hwnd = IntPtrHwnd.FromIntPtr(w.Hwnd); _config.WindowTitle = w.Title; }
         int.TryParse(DelayText.Text, out int d); _config.DelayMs = d > 0 ? d : 1500;
-        int.TryParse(ThresholdText.Text, out int t); _config.MatchThreshold = t > 0 ? t : 60;
         int.TryParse(SettleText.Text, out int sm); _config.SettleMaxMs = sm > 0 ? sm : 9000;
-        int.TryParse(RefThresholdText.Text, out int rt); _config.ReferenceThreshold = rt > 0 ? rt : 45;
+        int.TryParse(MinOvrText.Text, out int mo); _config.MinOvr = mo > 0 ? mo : 0;
+        _config.AcceptAnyTierByOvr = AcceptAnyByOvrCheck.IsChecked == true;
+        _config.OvrOnly = OvrOnlyCheck.IsChecked == true;
         int.TryParse(RefreshCapText.Text, out int rc); _config.RefreshCap = rc > 0 ? rc : 0;
         _config.MinRarity = MinRarityCombo.SelectedItem?.ToString() ?? _config.MinRarity;
         _config.MaxRarity = MaxRarityCombo.SelectedItem?.ToString() ?? _config.MaxRarity;
         _config.Strategy = StrategyCombo.SelectedIndex >= 0 ? StrategyCombo.SelectedIndex : 0;
         _config.CaptureMethod = CaptureMethodCombo.SelectedIndex >= 0 ? CaptureMethodCombo.SelectedIndex : 0;
-        _config.DetectMode = DetectModeCombo.SelectedIndex >= 0 ? DetectModeCombo.SelectedIndex : 0;
         _config.GroupRivalry = GroupRivalryCheck.IsChecked == true;
-        _config.DismissWithEsc = DismissEscCheck.IsChecked == true;
         _config.CardCount = CardCountCombo.SelectedIndex >= 0 ? CardCountCombo.SelectedIndex + 1 : 1;
         _config.CardLayout = ComboContent(CardLayoutCombo, "2 x 2 grid");
         InputSim.UseLegacyMouseEvent = LegacyMouseEventCheck.IsChecked == true;
@@ -321,11 +300,6 @@ public partial class MainWindow : Window
     }
 
     private void FitPreviewCheck_Changed(object sender, RoutedEventArgs e) => FitPreview();
-
-    /// <summary>
-    /// Saves the current game window capture with markers on every configured point/region,
-    /// so the exact click targets can be verified.
-    /// </summary>
     private void SaveDebugShot_Click(object sender, RoutedEventArgs e)
     {
         var w = SelectedWindow();
@@ -370,7 +344,6 @@ public partial class MainWindow : Window
             Marker(_config.RefreshX, _config.RefreshY, Color.Yellow, "REFRESH");
             Marker(_config.OddsBtnX, _config.OddsBtnY, Color.Orange, "ODDSBTN");
             Marker(_config.OddsCloseX, _config.OddsCloseY, Color.OrangeRed, "ODDSCLOSE");
-            Marker(_config.DismissX, _config.DismissY, Color.Magenta, "DISMISS");
         }
 
         string dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HockeyRoller");
@@ -434,13 +407,10 @@ public partial class MainWindow : Window
     }
 
     // ---------------- Picking ----------------
-    private enum PickMode { None, Roll, CardRegion, RaritySample, Dismiss, Reroll, Refresh, OddsBtn, OddsRegion, Blocked, OddsClose, OddsTeamTab }
+    private enum PickMode { None, Roll, CardRegion, Dismiss, Reroll, Refresh, OddsBtn, OddsRegion, Blocked, OddsClose, OddsTeamTab }
 
     private void PickRoll_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Roll; PickStatusText.Text = "Pick mode: Roll Button - click on the roll button."; }
     private void PickCardRegion_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.CardRegion; _dragging = false; PickStatusText.Text = "Pick mode: Card Region - drag a rectangle over the card."; }
-    private void PickRaritySample_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.RaritySample; _dragging = false; PickStatusText.Text = "Pick mode: Rarity Sample - drag a small box on the rarity colour area."; }
-    private void PickDismiss_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Dismiss; PickStatusText.Text = "Pick mode: Dismiss - click a point."; }
-    private void ClearDismiss_Click(object s, RoutedEventArgs e) { _config.DismissX = -1; _config.DismissY = -1; DismissPtText.Text = ""; }
     private void PickReroll_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Reroll; PickStatusText.Text = "Pick mode: Reroll Button - click."; }
     private void PickRefresh_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Refresh; PickStatusText.Text = "Pick mode: Refresh Button - click."; }
     private void PickOddsBtn_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.OddsBtn; PickStatusText.Text = "Pick mode: Odds Button - click."; }
@@ -470,12 +440,12 @@ public partial class MainWindow : Window
         switch (_pickMode)
         {
             case PickMode.Roll: _config.RollX = x; _config.RollY = y; RollPtText.Text = $"{x},{y}"; break;
-            case PickMode.Dismiss: _config.DismissX = x; _config.DismissY = y; DismissPtText.Text = $"{x},{y}"; break;
             case PickMode.Reroll: _config.RerollX = x; _config.RerollY = y; RerollPtText.Text = $"{x},{y}"; break;
             case PickMode.Refresh: _config.RefreshX = x; _config.RefreshY = y; RefreshPtText.Text = $"{x},{y}"; break;
             case PickMode.OddsBtn: _config.OddsBtnX = x; _config.OddsBtnY = y; OddsBtnPtText.Text = $"{x},{y}"; break;
             case PickMode.OddsClose: _config.OddsCloseX = x; _config.OddsCloseY = y; OddsClosePtText.Text = $"{x},{y}"; break;
             case PickMode.OddsTeamTab: _config.OddsTeamTabX = x; _config.OddsTeamTabY = y; OddsTeamTabPtText.Text = $"{x},{y}"; break;
+
             default:
                 _dragStart = pos; _dragStartBitmap = new System.Windows.Point(x, y); _dragging = true;
                 PreviewRect.Visibility = Visibility.Visible;
@@ -526,77 +496,13 @@ public partial class MainWindow : Window
                 BlockedRegionText.Text = $"{x1},{y1} {w}x{h}";
                 PickStatusText.Text = $"Blocked region set {w}x{h}";
                 break;
-            case PickMode.RaritySample:
-                _config.RaritySampleX = x1 - _config.CardX;
-                _config.RaritySampleY = y1 - _config.CardY;
-                _config.RaritySampleW = w; _config.RaritySampleH = h;
-                RaritySampleText.Text = $"{_config.RaritySampleX},{_config.RaritySampleY} {w}x{h} (rel)";
-                PickStatusText.Text = $"Rarity sample set {w}x{h}";
-                break;
         }
         _pickMode = PickMode.None;
     }
 
     // ---------------- Rarities ----------------
-    private void SampleColor_Click(object sender, RoutedEventArgs e)
-    {
-        if (RarityList.SelectedItem is not RarityColor rc) { MessageBox.Show("Select a tier in the list first."); return; }
-        if (_previewBmp == null) { MessageBox.Show("Capture preview first."); return; }
-        var fs = ColorMatch.SampleFrame(_previewBmp, new Rectangle(_config.CardX, _config.CardY, _config.CardW, _config.CardH));
-        if (!fs.Valid) { MessageBox.Show("Set the card region first."); return; }
-        rc.R = fs.Peak.R; rc.G = fs.Peak.G; rc.B = fs.Peak.B;
-        var body = ColorMatch.DominantColor(_previewBmp, new Rectangle(_config.CardX, _config.CardY, _config.CardW, _config.CardH));
-        rc.BodyR = body.R; rc.BodyG = body.G; rc.BodyB = body.B; rc.HasBody = true;
-        RarityList.ItemsSource = null; RarityList.ItemsSource = _config.Rarities;
-        AppendLog($"{rc.Name} frame = #{rc.R:X2}{rc.G:X2}{rc.B:X2} body = #{body.R:X2}{body.G:X2}{body.B:X2} (from preview)");
-    }
 
-    private async void AssignCurrentCard_Click(object sender, RoutedEventArgs e)
-    {
-        if (RarityList.SelectedItem is not RarityColor rc) { MessageBox.Show("Select the tier the card on screen is."); return; }
-        var w = SelectedWindow();
-        if (w == null) { MessageBox.Show("Select window."); return; }
-        if (_config.CardW <= 0) { MessageBox.Show("Set the card region first."); return; }
-        var bmp = WindowCapture.Capture(w.Hwnd, CaptureMethodCombo.SelectedIndex);
-        if (bmp == null) { MessageBox.Show("Capture failed."); return; }
-        var card = WindowCapture.Crop(bmp, new Rectangle(_config.CardX, _config.CardY, _config.CardW, _config.CardH));
-        bmp.Dispose();
-        var fs = ColorMatch.SampleFrame(card, new Rectangle(0, 0, card.Width, card.Height));
-        if (!fs.Valid) { MessageBox.Show("Could not sample the card frame."); return; }
-        rc.R = fs.Peak.R; rc.G = fs.Peak.G; rc.B = fs.Peak.B;
-        var body = ColorMatch.DominantColor(card, new Rectangle(0, 0, card.Width, card.Height));
-        if (rc.RequireRedYellow)
-        {
-            // rivalry cards: frame = red, body = gold/yellow
-            var redC = ColorMatch.DominantInHueBand(card, new Rectangle(0, 0, card.Width, card.Height), 340, 20, 0.35, 0.18);
-            var yellowC = ColorMatch.DominantInHueBand(card, new Rectangle(0, 0, card.Width, card.Height), 35, 68, 0.35, 0.30);
-            if (redC != Color.Black) { rc.R = redC.R; rc.G = redC.G; rc.B = redC.B; }
-            if (yellowC != Color.Black) { body = yellowC; }
-        }
-        rc.BodyR = body.R; rc.BodyG = body.G; rc.BodyB = body.B; rc.HasBody = true;
-        int sparkles = SparkleDetector.CountSparkles(card);
-        rc.Sparkles = sparkles > 0; rc.SparklesKnown = true;
-        card.Dispose();
-        RarityList.ItemsSource = null; RarityList.ItemsSource = _config.Rarities;
-        AppendLog($"{rc.Name} frame = #{rc.R:X2}{rc.G:X2}{rc.B:X2} body = #{body.R:X2}{body.G:X2}{body.B:X2} sparkles={sparkles} (hue dispersion {fs.Dispersion:F2}, sat {fs.Saturation:F2})");
-    }
 
-    private async void AssignAltColor_Click(object sender, RoutedEventArgs e)
-    {
-        if (RarityList.SelectedItem is not RarityColor rc) { MessageBox.Show("Select a tier in the list first."); return; }
-        var w = SelectedWindow();
-        if (w == null) { MessageBox.Show("Select window."); return; }
-        if (_config.CardW <= 0) { MessageBox.Show("Set the card region first."); return; }
-        var bmp = WindowCapture.Capture(w.Hwnd, CaptureMethodCombo.SelectedIndex);
-        if (bmp == null) { MessageBox.Show("Capture failed."); return; }
-        using var card = WindowCapture.Crop(bmp, new Rectangle(_config.CardX, _config.CardY, _config.CardW, _config.CardH));
-        bmp.Dispose();
-        var fs = ColorMatch.SampleFrame(card, new Rectangle(0, 0, card.Width, card.Height));
-        if (!fs.Valid) { MessageBox.Show("Could not sample the card frame."); return; }
-        rc.AltR = fs.Peak.R; rc.AltG = fs.Peak.G; rc.AltB = fs.Peak.B; rc.HasAlt = true;
-        RarityList.ItemsSource = null; RarityList.ItemsSource = _config.Rarities;
-        AppendLog($"{rc.Name} alt colour = #{rc.AltR:X2}{rc.AltG:X2}{rc.AltB:X2}");
-    }
 
     private void ResetRarities_Click(object sender, RoutedEventArgs e)
     {
@@ -618,49 +524,8 @@ public partial class MainWindow : Window
     }
 
     // ---------------- Detection ----------------
-    private List<TierProfile> _profiles = new();
 
-    private void LoadReferences()
-    {
-        _profiles = ReferenceLibrary.Load(ReferenceLibrary.DefaultFolder, _config.Rarities.Select(r => r.Name));
 
-        // the reference art is ground truth: use its frame colour for the tier
-        foreach (var p in _profiles)
-        {
-            var tier = _config.Rarities.FirstOrDefault(r =>
-                string.Equals(r.Name, p.Name, StringComparison.OrdinalIgnoreCase));
-            if (tier == null) continue;
-            if (p.Peak.R + p.Peak.G + p.Peak.B > 0)
-            {
-                tier.R = p.Peak.R; tier.G = p.Peak.G; tier.B = p.Peak.B;
-                tier.HasBody = false;      // the guessed body colour is less reliable than the art
-            }
-        }
-
-        string msg = _profiles.Count > 0
-            ? $"{_profiles.Count} reference(s): {string.Join(", ", _profiles.Select(p => p.Name))}"
-            : $"none found in {ReferenceLibrary.DefaultFolder} - add PNGs named after the tiers";
-        if (ReferenceText != null) ReferenceText.Text = msg;
-        AppendLog("Reference images: " + msg);
-    }
-
-    private void ReloadReferences_Click(object sender, RoutedEventArgs e) => LoadReferences();
-
-    private void OpenReferenceFolder_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            System.IO.Directory.CreateDirectory(ReferenceLibrary.DefaultFolder);
-            System.Diagnostics.Process.Start("explorer.exe", ReferenceLibrary.DefaultFolder);
-            AppendLog("Opened: " + ReferenceLibrary.DefaultFolder);
-        }
-        catch (Exception ex) { AppendLog("Could not open folder: " + ex.Message); }
-    }
-
-    /// <summary>
-    /// Learns each tier's colour from the game's own odds panel: every rarity name is
-    /// drawn in that rarity's colour, so the text colour IS the tier colour.
-    /// </summary>
     private async Task<int> LearnTiersFromOddsAsync(IntPtr hwnd, CancellationToken token)
     {
         int learned = 0;
@@ -715,170 +580,6 @@ public partial class MainWindow : Window
         return learned;
     }
 
-    private async void LearnFromOdds_Click(object sender, RoutedEventArgs e)
-    {
-        var w = SelectedWindow();
-        if (w == null) { MessageBox.Show("Select window."); return; }
-        AppendLog("Learning tier colours from the odds panel...");
-        int n = await LearnTiersFromOddsAsync(w.Hwnd, CancellationToken.None);
-        AppendLog(n > 0 ? $"Learned {n} tier colour(s)." : "Nothing learned - is the odds panel visible?");
-        MessageBox.Show(n > 0
-            ? $"Learned {n} tier colour(s) from the odds panel."
-            : "Could not read the odds panel. Make sure the odds panel opens on screen.");
-    }
-
-    private async Task<(string? tier, string detail)> DetectTierAsync(Bitmap card, int detectMode)
-    {
-        if (card.Width <= 0 || card.Height <= 0) return (null, "no card region");
-
-        string detail = "";
-        string? tier = null;
-
-        if (detectMode != 2)
-        {
-            string text = await OcrService.RecognizeAsync(card);
-            text = text.Replace("\r", " ").Replace("\n", " ").Trim();
-            detail = "OCR[" + (text.Length > 90 ? text.Substring(0, 90) : text) + "]";
-            tier = RarityCatalog.MatchText(text, _config.Rarities);
-            if (tier != null) return (tier, detail);
-        }
-
-        // reference image matching (uses the actual card artwork you supplied)
-        if (_profiles.Count > 0)
-        {
-            var cardProfile = TierProfile.FromWindow(card, new Rectangle(0, 0, card.Width, card.Height));
-            var ranked = _profiles.Select(p => (p, d: cardProfile.DistanceTo(p))).OrderBy(x => x.d).ToList();
-            var best = ranked[0];
-            double second = ranked.Count > 1 ? ranked[1].d : double.MaxValue;
-            detail += $" REF[{best.p.Name} d={best.d:F0} next={second:F0}]";
-            if (best.d <= _config.ReferenceThreshold && (second == double.MaxValue || second - best.d > 4))
-                return (best.p.Name, detail);
-            detail += " (ref match too weak)";
-        }
-
-        if (detectMode != 1)
-        {
-            var fs = ColorMatch.SampleFrame(card, new Rectangle(0, 0, card.Width, card.Height));
-            if (fs.Valid)
-            {
-                detail += $" COL[avg #{fs.Average.R:X2}{fs.Average.G:X2}{fs.Average.B:X2} peak #{fs.Peak.R:X2}{fs.Peak.G:X2}{fs.Peak.B:X2} disp {fs.Dispersion:F2} sat {fs.Saturation:F2}]";
-                // rainbow frames (prismatic) first
-                foreach (var r in _config.Rarities.Where(x => x.MultiHue))
-                {
-                    if (fs.Dispersion >= 0.30 && fs.Saturation >= 0.18)
-                        return (r.Name, detail);
-                }
-                RarityColor? best = null; double bestD = double.MaxValue;
-                var cardRectFull = new Rectangle(0, 0, card.Width, card.Height);
-                double redFrac = ColorMatch.HueBandFraction(card, cardRectFull, 340, 20, 0.35, 0.18);
-                double yellowFrac = ColorMatch.HueBandFraction(card, cardRectFull, 35, 68, 0.35, 0.30);
-                detail += $" red={redFrac:P1} yellow={yellowFrac:P1}";
-
-                var frameDist = new Dictionary<RarityColor, double>();
-                var bodyDist = new Dictionary<RarityColor, double>();
-                var bodyColor = ColorMatch.DominantColor(card, cardRectFull);
-                foreach (var r in _config.Rarities.Where(x => !x.MultiHue))
-                {
-                    double fd = Math.Min(ColorMatch.Distance(fs.Average, r.ToColor()),
-                                         ColorMatch.Distance(fs.Peak, r.ToColor()));
-                    if (r.HasAlt)
-                        fd = Math.Min(fd, Math.Min(ColorMatch.Distance(fs.Average, Color.FromArgb(r.AltR, r.AltG, r.AltB)),
-                                                   ColorMatch.Distance(fs.Peak, Color.FromArgb(r.AltR, r.AltG, r.AltB))));
-                    frameDist[r] = fd;
-                    bodyDist[r] = r.HasBody
-                        ? ColorMatch.Distance(bodyColor, Color.FromArgb(r.BodyR, r.BodyG, r.BodyB))
-                        : double.MaxValue;
-                    if (fd < bestD) { bestD = fd; best = r; }
-                }
-
-                double thr = _config.MatchThreshold;
-                // a tier qualifies if EITHER its frame colour or its body colour is a close match
-                bool Qualifies(RarityColor r)
-                {
-                    if (frameDist.TryGetValue(r, out double fd) && fd <= thr) return true;
-                    if (bodyDist.TryGetValue(r, out double bd) && bd <= thr) return true;
-                    return false;
-                }
-                var candidates = _config.Rarities.Where(Qualifies).ToList();
-
-                if (candidates.Count == 0)
-                {
-                    // nothing close enough - report the closest tier for diagnostics but claim nothing
-                    var nearest = _config.Rarities.Where(x => !x.MultiHue)
-                        .Select(x => (x, d: frameDist.TryGetValue(x, out var d2) ? d2 : 9999))
-                        .OrderBy(t => t.d).FirstOrDefault();
-                    detail += $" (no tier within threshold; nearest {(nearest.x == null ? "?" : nearest.x.Name)} d={(nearest.x == null ? -1 : nearest.d):F0})";
-                    return (null, detail);
-                }
-
-                if (candidates.Count > 0)
-                {
-                    // tiers that need BOTH red and yellow on the card
-                    var needBoth = candidates.Where(r => r.RequireRedYellow).ToList();
-                    if (needBoth.Count > 0)
-                    {
-                        var ok = needBoth.Where(r => redFrac >= 0.015 && yellowFrac >= 0.015).ToList();
-                        if (ok.Count > 0) candidates = ok;
-                        else if (needBoth.Count == candidates.Count)
-                        {
-                            // every candidate is a rivalry tier and the card has no red+yellow,
-                            // so it is definitely not one of them
-                            detail += " (rivalry filter: no red+yellow on the card)";
-                            return (null, detail);
-                        }
-                        else candidates = candidates.Where(r => !r.RequireRedYellow).ToList();
-                    }
-
-                    int sparkles = SparkleDetector.CountSparkles(card);
-                    detail += $" sparkles={sparkles}";
-                    if (sparkles > 0)
-                    {
-                        var withSparkle = candidates.Where(r => r.SparklesKnown && r.Sparkles).ToList();
-                        if (withSparkle.Count > 0) candidates = withSparkle;
-                    }
-                    else
-                    {
-                        var withoutSparkle = candidates.Where(r => r.SparklesKnown && !r.Sparkles).ToList();
-                        if (withoutSparkle.Count > 0) candidates = withoutSparkle;
-                    }
-
-                    if (candidates.Count == 0) { detail += " (no candidates left)"; return (null, detail); }
-
-                    double Score(RarityColor r) =>
-                        r.HasBody ? (frameDist[r] + bodyDist[r]) / 2.0 : frameDist[r];
-                    var winner = candidates.OrderBy(Score).First();
-
-                    // confidence gate: never claim a card unless the match is convincing.
-                    // With a body reference BOTH signals must be close; without one the
-                    // frame colour must be a tight match and clearly better than the runner-up.
-                    double frameD = frameDist[winner];
-                    bool confident;
-                    double bodyD = -1;
-                    if (winner.HasBody)
-                    {
-                        bodyD = bodyDist[winner];
-                        double combined = (frameD + bodyD) / 2.0;
-                        confident = combined <= thr && frameD <= thr * 1.8 && bodyD <= thr * 1.8;
-                    }
-                    else
-                    {
-                        confident = frameD <= thr * 0.8;
-                    }
-
-                    // the winner must also be clearly better than the next best tier
-                    var ordered = candidates.OrderBy(Score).ToList();
-                    double margin = ordered.Count > 1 ? Score(ordered[1]) - Score(ordered[0]) : 999;
-                    if (margin < 6) confident = false;
-
-                    detail += $" {winner.Name} frame d={frameD:F0} body d={(winner.HasBody ? bodyD : -1):F0} margin={margin:F0} conf={(confident ? "yes" : "LOW")}";
-                    if (!confident) return (null, detail);
-                    return (winner.Name, detail);
-                }
-                detail += $" (nearest {best?.Name} d={bestD:F0} > threshold {thr})";
-            }
-        }
-        return (null, detail);
-    }
 
     private async void TestDetection_Click(object sender, RoutedEventArgs e)
     {
@@ -887,7 +588,6 @@ public partial class MainWindow : Window
         if (_config.CardW <= 0) { MessageBox.Show("Set card region first."); return; }
         var bmp = WindowCapture.Capture(w.Hwnd, CaptureMethodCombo.SelectedIndex);
         if (bmp == null) { AppendLog("Capture failed."); return; }
-        int mode = DetectModeCombo.SelectedIndex;
         var cardRect = new Rectangle(_config.CardX, _config.CardY, _config.CardW, _config.CardH);
         using var region = WindowCapture.Crop(bmp, cardRect);
         bmp.Dispose();
@@ -895,9 +595,15 @@ public partial class MainWindow : Window
         for (int i = 0; i < slices.Count; i++)
         {
             using var card = WindowCapture.Crop(region, slices[i]);
-            var (tier, detail) = await DetectTierAsync(card, mode);
+            // the tier comes from the OVR number - the only signal
+            var (ovrVal, _ovrBox) = await ReadOvrWithBoxAsync(card);
+            int ovr = ovrVal != 0 ? ovrVal : await ReadOvrAsync(card);
+
+            bool vsSymbol = await HasVsSymbolAsync(card);
+            string? tier = DetectTierShiny(card, ovr, vsSymbol, out bool shiny);
             bool strip = DiagonalStripDetector.HasDiagonalStrip(card, out double stripScore);
-            AppendLog($"Detection test card {i + 1}/{slices.Count} -> {tier ?? "(unknown)"}  {detail}  blockedRibbon={strip} (score {stripScore:F2})");
+            string det = $"ovr={ovr}{(shiny ? " SHINY+2" : "")}{(vsSymbol ? " vs" : "")}";
+            AppendLog($"Detection test card {i + 1}/{slices.Count} -> {tier ?? "(unknown)"}  {det}  blockedRibbon={strip} (score {stripScore:F2})");
             StatusText.Text = tier ?? "(unknown)";
         }
     }
@@ -906,14 +612,6 @@ public partial class MainWindow : Window
     private uint _lastRegionHash;
     private uint _lastWinHash;
     private int _refreshesWithoutHit = 0;
-
-    /// <summary>Focus the game window first, then click, and log exactly what was sent.</summary>
-    /// <summary>
-    /// Click a point in the game window.
-    /// method 0 = SendInput (real cursor + injected press)
-    /// method 1 = PostMessage (window messages)
-    /// method 2 = SendInput with the move inside the same injected batch
-    /// </summary>
     private void ClickAt(IntPtr hwnd, int clientX, int clientY, int method = 0)
     {
         Win32.GetClientRect(hwnd, out var rc);
@@ -1004,15 +702,11 @@ public partial class MainWindow : Window
     }
 
     private int _rollOffsetX = 0, _rollOffsetY = 0;   // learned nudge that made the click land
-
-    /// <summary>The manually picked ODDS button position.</summary>
     private (int x, int y) ResolveOddsButton(IntPtr hwnd)
     {
         if (_config.OddsBtnX >= 0) return (_config.OddsBtnX, _config.OddsBtnY);
         return (0, 0);
     }
-
-    /// <summary>The manually picked ROLL / REFRESH button positions.</summary>
     private (int x, int y) ResolveButton(IntPtr hwnd, bool refresh)
     {
         if (refresh && _config.RefreshX != 0) return (_config.RefreshX, _config.RefreshY);
@@ -1035,12 +729,6 @@ public partial class MainWindow : Window
         ClickAt(hwnd, bx + _rollOffsetX, by + _rollOffsetY, _clickMethod);
         AppendLog(useRefresh ? "Refreshed (kept team/year)." : "Rerolled (full).");
     }
-
-    /// <summary>
-    /// Reads the odds panel: opens it, switches to the THIS TEAM tab (which lists the
-    /// refresh odds for the current team) and OCRs the rarity names on that side.
-    /// Fully automatic - no region picking needed.
-    /// </summary>
     private async Task<(List<string> tiers, string text)> ReadRefreshOddsAsync(IntPtr hwnd, CancellationToken token)
     {
         var (oddsBtnX, oddsBtnY) = ResolveOddsButton(hwnd);
@@ -1124,9 +812,6 @@ public partial class MainWindow : Window
         return (names, text.ToString().Trim());
     }
 
-    /// <summary>
-    /// Detects the "TEAM COMPLETE" screen (big white heading at the top of the screen).
-    /// </summary>
     private async Task<bool> TeamCompleteReachedAsync(IntPtr hwnd)
     {
         if (StopOnCompleteCheck.IsChecked != true) return false;
@@ -1141,6 +826,12 @@ public partial class MainWindow : Window
             bmp.Dispose();
 
             string text = await OcrService.RecognizeAsync(crop);
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                // try again without the contrast enhancement
+                var raw = await OcrService.RecognizeWordsAsync(crop, false);
+                text = string.Join(" ", raw.Select(w => w.Text));
+            }
             if (string.IsNullOrWhiteSpace(text)) return false;
             string upper = text.ToUpperInvariant();
 
@@ -1187,11 +878,6 @@ public partial class MainWindow : Window
         }
         return prev[b.Length];
     }
-
-    /// <summary>
-    /// Reads the "Rerolls Available" and "Refreshes Available" counters from the left
-    /// panel (one capture, one OCR pass).
-    /// </summary>
     private async Task<(int? rerolls, int? refreshes)> ReadCountersAsync(IntPtr hwnd)
     {
         int? rerolls = null, refreshes = null;
@@ -1201,29 +887,50 @@ public partial class MainWindow : Window
             var bmp = WindowCapture.Capture(hwnd, _config.CaptureMethod);
             if (bmp == null) return (null, null);
 
-            int rx = _config.RollX - 170;
-            int ry = _config.RollY - 105;
-            int rw = 340;
-            int rh = Math.Max(90, (_config.RefreshY - _config.RollY) + 150);
-            rx = Math.Max(0, Math.Min(rx, bmp.Width - 10));
-            ry = Math.Max(0, Math.Min(ry, bmp.Height - 10));
-            rw = Math.Min(rw, bmp.Width - rx);
-            rh = Math.Min(rh, bmp.Height - ry);
-            if (rw < 60 || rh < 30) { bmp.Dispose(); return (null, null); }
+            var texts = new List<string>();
 
-            using var strip = WindowCapture.Crop(bmp, new Rectangle(rx, ry, rw, rh));
+            // rerolls counter: just above the ROLL button
+            var r1 = new Rectangle(_config.RollX - 140, _config.RollY - 58, 280, 24);
+            r1 = Clamp(r1, bmp);
+            if (r1.Width > 60 && r1.Height > 10)
+            {
+                using var strip = WindowCapture.Crop(bmp, r1);
+                var lines = await OddsReader.ReadRegionAsync(strip, 0, strip.Width, t => new List<string>());
+                foreach (var l in lines) texts.Add(l.Text);
+            }
+
+            // refreshes counter: just above the REFRESH button
+            var r2 = new Rectangle(_config.RefreshX - 140, _config.RefreshY - 57, 280, 26);
+            r2 = Clamp(r2, bmp);
+            if (r2.Width > 60 && r2.Height > 10)
+            {
+                using var strip = WindowCapture.Crop(bmp, r2);
+                var lines = await OddsReader.ReadRegionAsync(strip, 0, strip.Width, t => new List<string>());
+                foreach (var l in lines) texts.Add(l.Text);
+            }
             bmp.Dispose();
 
-            var lines = await OddsReader.ReadRegionAsync(strip, 0, strip.Width, t => new List<string>());
-            foreach (var l in lines)
+            foreach (var t in texts)
             {
-                string t = l.Text.ToLowerInvariant();
-                if (t.Contains("reroll") && TryGetNumber(l.Text, out int rv)) rerolls = rv;
-                else if (t.Contains("refresh") && TryGetNumber(l.Text, out int rf)) refreshes = rf;
+                string low = t.ToLowerInvariant();
+                if (low.Contains("reroll") && TryGetNumber(t, out int rv)) rerolls = rv;
+                else if (low.Contains("refresh") && TryGetNumber(t, out int rf)) refreshes = rf;
             }
+            // fallback: the counters are always in order - rerolls first, refreshes second
+            if (!rerolls.HasValue && texts.Count > 0 && TryGetNumber(texts[0], out int f1)) rerolls = f1;
+            if (!refreshes.HasValue && texts.Count > 1 && TryGetNumber(texts[1], out int f2)) refreshes = f2;
         }
         catch { }
         return (rerolls, refreshes);
+    }
+
+    private static Rectangle Clamp(Rectangle r, Bitmap bmp)
+    {
+        int x = Math.Max(0, Math.Min(r.X, bmp.Width - 10));
+        int y = Math.Max(0, Math.Min(r.Y, bmp.Height - 10));
+        int w = Math.Min(r.Width, bmp.Width - x);
+        int h = Math.Min(r.Height, bmp.Height - y);
+        return new Rectangle(x, y, w, h);
     }
 
     private static bool TryGetNumber(string text, out int value)
@@ -1289,11 +996,6 @@ public partial class MainWindow : Window
         await CloseOddsPanelAsync(hwnd, token, new Rectangle(), 0, null);
         return avail.Count > 0;
     }
-
-    /// <summary>
-    /// Closes the odds modal using the manually picked close point.
-    /// (The odds panel is a modal - while it is open the roll button cannot be clicked.)
-    /// </summary>
     private async Task CloseOddsPanelAsync(IntPtr hwnd, CancellationToken token, Rectangle oddsRect, uint beforeHash,
                                             System.Drawing.Point? detectedPanelX)
     {
@@ -1317,10 +1019,10 @@ public partial class MainWindow : Window
         return HashBitmap(crop);
     }
 
-    private async Task<(List<(Rectangle slice, string? tier, bool ribbon, string detail, double score)> found, uint hash, uint winHash)>
+    private async Task<(List<(Rectangle slice, string? tier, bool ribbon, string detail, double score, int ovr, double margin)> found, uint hash, uint winHash)>
         DetectAllAsync(IntPtr hwnd, CancellationToken token)
     {
-        var empty = new List<(Rectangle, string?, bool, string, double)>();
+        var empty = new List<(Rectangle, string?, bool, string, double, int, double)>();
         var bmp = WindowCapture.Capture(hwnd, _config.CaptureMethod);
         if (bmp == null) { AppendLog("Capture failed."); return (empty, 0, 0); }
 
@@ -1332,48 +1034,384 @@ public partial class MainWindow : Window
         uint winHash = HashBitmap(CropSafe(bmp, new Rectangle(0, 0, Math.Min(700, bmp.Width), bmp.Height)));
         bmp.Dispose();
 
-        var found = new List<(Rectangle slice, string? tier, bool ribbon, string detail, double score)>();
+        var found = new List<(Rectangle slice, string? tier, bool ribbon, string detail, double score, int ovr, double margin)>();
 
-        if (_profiles.Count > 0)
+        SaveDebug(region, "cards_last.png");      // always keep the last region for inspection
+
+        // The ONLY tier signal is the colour of the reference pixel on each card.
+        var cells = SliceRegions(new Rectangle(0, 0, region.Width, region.Height),
+                                _config.CardCount, _config.CardLayout);
+
+        for (int i = 0; i < cells.Count; i++)
         {
-            // search the region for cards using the reference art - this finds them even
-            // when the picked region is not perfectly aligned with the cards
-            var hits = CardFinder.Find(region, _profiles, _config.CardCount, _config.CardLayout,
-                                       _config.ReferenceThreshold, _config.CardCount);
-            if (hits.Count == 0)
-            {
-                AppendLog("No card found in the region (reference matching).");
-                SaveDebug(region, "cards_last.png");
-                found.Add((new Rectangle(0, 0, region.Width, region.Height), null, false, "REF: nothing matched", 999));
-            }
-            foreach (var hit in hits)
-            {
-                using var card = WindowCapture.Crop(region, hit.Rect);
-                bool ribbon = DiagonalStripDetector.HasDiagonalStrip(card, out _);
-                bool shiny = hit.Rainbow && !hit.Tier.Equals("Prismatic", StringComparison.OrdinalIgnoreCase);
-                string label = shiny ? $"SHINY {hit.Tier}" : hit.Tier;
-                found.Add((hit.Rect, hit.Tier, ribbon, $"REF d={hit.Distance:F0} margin={hit.Margin:F0}{(shiny ? " SHINY" : "")}", hit.Distance));
-            }
-            return (found, hash, winHash);
-        }
+            var cell = cells[i];
+            using var card = WindowCapture.Crop(region, cell);
 
-        var slices = SliceRegions(new Rectangle(0, 0, region.Width, region.Height),
-                                  _config.CardCount, _config.CardLayout);
-
-        for (int i = 0; i < slices.Count; i++)
-        {
-            using var card = WindowCapture.Crop(region, slices[i]);
-            var (tier, detail) = await DetectTierAsync(card, _config.DetectMode);
             bool ribbon = DiagonalStripDetector.HasDiagonalStrip(card, out _);
-            found.Add((slices[i], tier, ribbon, detail, 0));
+
+            var (ovr, ovrBox) = await ReadOvrWithBoxAsync(card);
+            int ovr2 = ovr;
+            if (ovr2 == 0) ovr2 = await ReadOvrAsync(card);
+
+            // The ONLY tier signal is the OVR number.
+            bool vsSymbol = await HasVsSymbolAsync(card);      // Rivalry needs it at 112
+            string? tier = DetectTierShiny(card, ovr2, vsSymbol, out bool shiny);
+
+            string detail = $"ovr={ovr2}{(shiny ? " SHINY+2" : "")}{(vsSymbol ? " vs" : "")}" +
+                            (tier == null ? " (no tier for this OVR)" : "");
+
+            found.Add((cell, tier, ribbon, detail, 0, ovr2, 0));
         }
         return (found, hash, winHash);
     }
+    private static bool HasRainbowBorder(Bitmap card)
+    {
+        try
+        {
+            var prof = TierProfile.FromWindow(card, new Rectangle(0, 0, card.Width, card.Height));
+            return prof.RainbowBins >= 8;
+        }
+        catch { return false; }
+    }
 
-    /// <summary>
-    /// Waits until the game stops changing (animation finished) instead of a fixed delay.
-    /// Uses a change *ratio* so a continuously shimmering card still counts as settled.
-    /// </summary>
+    private string? DetectTierShiny(Bitmap card, int rawOvr, bool vsSymbol, out bool shiny)
+    {
+        shiny = false;
+        if (rawOvr <= 0) return null;
+
+        bool hasRainbow = HasRainbowBorder(card);
+        if (!hasRainbow)
+            return RarityCatalog.TierFromOvr(rawOvr, false, vsSymbol);
+
+        // PRISMATIC has a WHITE body inside its rainbow border AND is OVR 105-107; other
+        // tiers do not (Franchise is a dark-purple strip over black, etc.). Sample a few
+        // pixels just inside the border AND really close to it: white inside + Prismatic
+        // OVR => Prismatic. A shiny lower-tier card is not Prismatic.
+        bool isPrismatic = HasWhiteInsideBorder(card) && rawOvr >= 103 && rawOvr <= 109;
+        if (isPrismatic)
+            return RarityCatalog.TierFromOvr(rawOvr, false, vsSymbol);   // Prismatic, never shiny
+
+        // rainbow on a non-Prismatic card = shiny (adds +2 OVR)
+        string? tier = RarityCatalog.TierFromOvr(rawOvr, true, vsSymbol);
+
+        // Prismatic and everything above it can never be shiny
+        if (RarityCatalog.TierOrder(tier) >= RarityCatalog.TierOrder("Prismatic"))
+            return RarityCatalog.TierFromOvr(rawOvr, false, vsSymbol);
+
+        shiny = true;
+        return tier;
+    }
+    private static bool HasWhiteInsideBorder(Bitmap card)
+    {
+        int w = card.Width, h = card.Height;
+        if (w < 12 || h < 12) return false;
+        int margin = Math.Max(2, Math.Min(w, h) / 40);     // really close to the border
+        int inset = margin + 2;                            // just inside it
+        int shift = margin + 4;                            // a bit higher/lower to dodge anything overlaid
+
+        int white = 0, total = 0;
+        for (int i = 1; i <= 6; i++)                        // more points along every edge
+        {
+            int fx = w * i / 7, fy = h * i / 7;
+            var pts = new[]
+            {
+                (fx, margin),  (fx, h - margin),  (margin, fy),  (w - margin, fy),    // close to it
+                (fx, inset),   (fx, h - inset),   (inset, fy),   (w - inset, fy),     // just inside it
+                (fx, shift),   (fx, h - shift),   (shift, fy),   (w - shift, fy),     // a bit higher/lower
+            };
+            foreach (var (px, py) in pts)
+            {
+                if (px < 0 || py < 0 || px >= w || py >= h) continue;
+                total++;
+                var c = card.GetPixel(px, py);
+                if (c.R >= 200 && c.G >= 200 && c.B >= 200) white++;   // white
+            }
+        }
+        return total > 0 && white * 2 >= total;    // majority white
+    }
+    private static async Task<bool> HasVsSymbolAsync(Bitmap card)
+    {
+        try
+        {
+            if (card.Width < 20 || card.Height < 20) return false;
+            int w = card.Width / 4, h = card.Height / 4;
+            using var corner = WindowCapture.Crop(card,
+                new Rectangle(card.Width - w, card.Height - h, w, h));
+            using var big = ScaleBitmap(corner, 3f);
+            string text = await OcrService.RecognizeAsync(big);
+            string t = text.Replace(" ", "").Replace(".", "").Replace(":", "").ToLowerInvariant();
+            return t.Contains("vs");
+        }
+        catch { return false; }
+    }
+    private static async Task<(int ovr, Rectangle box)> ReadOvrWithBoxAsync(Bitmap cell)
+    {
+        foreach (var (scale, enhance, grey) in new[]
+                 { (2f, true, false), (3f, false, false), (3f, false, true), (2f, false, false) })
+        {
+            try
+            {
+                using var scaled = ScaleBitmap(cell, scale);
+                using var img = grey ? GreyBitmap(scaled) : null;
+                var source = grey ? img! : scaled;
+                var words = await OcrService.RecognizeWordsAsync(source, enhance);
+                Rectangle best = Rectangle.Empty;
+                int value = 0;
+                foreach (var wr in words)
+                {
+                    var r = new Rectangle((int)(wr.Rect.X / scale), (int)(wr.Rect.Y / scale),
+                                          Math.Max(1, (int)(wr.Rect.Width / scale)),
+                                          Math.Max(1, (int)(wr.Rect.Height / scale)));
+                    if (r.X > cell.Width * 0.62) continue;      // only the top-left corner
+                    if (r.Y > cell.Height * 0.45) continue;
+                    if (r.Height < 6) continue;
+                    if (!TryGetNumber(wr.Text, out int v) || v <= 0 || v >= 200) continue;
+                    if (best == Rectangle.Empty || r.Height > best.Height) { best = r; value = v; }
+                }
+                if (best != Rectangle.Empty) return (value, best);
+            }
+            catch { }
+        }
+        // last resort: the dedicated OVR reader
+        int fallback = await ReadOvrAsync(cell);
+        if (fallback > 0) return (fallback, Rectangle.Empty);
+        return (0, Rectangle.Empty);
+    }
+    private static async Task<int> ReadOvrFromCellAsync(Bitmap region, Rectangle cell)
+    {
+        try
+        {
+            var area = new Rectangle(cell.X, cell.Y, cell.Width, (int)(cell.Height * 0.34));
+            area = Clamp(area, region);
+            if (area.Width < 20 || area.Height < 15) return 0;
+
+            using var crop = WindowCapture.Crop(region, area);
+
+            // 2x with the contrast stretch reads the digits reliably
+            using var stretched = ScaleBitmap(crop, 2f);
+            int v = await ReadNumberFromAsync(stretched, true);
+            if (v > 0) return v;
+
+            // 3x greyscale is the other variant that works well
+            using var grey = GreyBitmap(ScaleBitmap(crop, 3f));
+            v = await ReadNumberFromAsync(grey, false);
+            if (v > 0) return v;
+
+            using var plain = ScaleBitmap(crop, 3f);
+            return await ReadNumberFromAsync(plain, false);
+        }
+        catch { return 0; }
+    }
+
+    private static async Task<int> ReadNumberFromAsync(Bitmap img, bool enhance)
+    {
+        var words = await OcrService.RecognizeWordsAsync(img, enhance);
+        foreach (var w in words)
+        {
+            if (w.Rect.Y > img.Height * 0.45) continue;
+            if (w.Rect.X > img.Width * 0.92) continue;
+            if (TryGetNumber(w.Text, out int v) && v > 0 && v < 200) return v;
+        }
+        return 0;
+    }
+    private static async Task<Rectangle> FindOvrAsync(Bitmap cell)
+    {
+        foreach (var (scale, enhance) in new[] { (2f, false), (2f, true), (3f, false), (4f, false) })
+        {
+            try
+            {
+                using var big = ScaleBitmap(cell, scale);
+                var words = await OcrService.RecognizeWordsAsync(big, enhance);
+                Rectangle best = Rectangle.Empty;
+                foreach (var wr in words)
+                {
+                    var r = new Rectangle((int)(wr.Rect.X / scale), (int)(wr.Rect.Y / scale),
+                                          Math.Max(1, (int)(wr.Rect.Width / scale)),
+                                          Math.Max(1, (int)(wr.Rect.Height / scale)));
+                    if (r.X > cell.Width * 0.62) continue;      // only the top-left corner
+                    if (r.Y > cell.Height * 0.45) continue;
+                    if (r.Height < 6) continue;
+                    if (!TryGetNumber(wr.Text, out int v) || v <= 0 || v >= 200) continue;
+                    // the OVR is the big number - keep the tallest one
+                    if (best == Rectangle.Empty || r.Height > best.Height) best = r;
+                }
+                if (best != Rectangle.Empty) return best;
+            }
+            catch { }
+        }
+        return Rectangle.Empty;
+    }
+
+    private static Bitmap GreyBitmap(Bitmap src)
+    {
+        var b = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
+        for (int y = 0; y < src.Height; y++)
+            for (int x = 0; x < src.Width; x++)
+            {
+                var c = src.GetPixel(x, y);
+                int l = (c.R * 30 + c.G * 59 + c.B * 11) / 100;
+                b.SetPixel(x, y, Color.FromArgb(l, l, l));
+            }
+        return b;
+    }
+    private static async Task<List<(int value, Rectangle rect)>> ReadOvrNumbersAsync(Bitmap region)
+    {
+        var result = new List<(int, Rectangle)>();
+        try
+        {
+            if (region.Width < 40 || region.Height < 40) return result;
+
+            // 2x makes the digits readable, and a white border gives the OCR some margin
+            using var big = ScaleBitmap(region, 2f);
+            using var padded = PadBitmap(big, 20, Color.White);
+            var words = await OcrService.RecognizeWordsAsync(padded, false);
+
+            foreach (var w in words)
+            {
+                if (!TryGetNumber(w.Text, out int v) || v <= 0 || v >= 200) continue;
+                // undo the padding and the 2x scale to get region coordinates
+                int x = (w.Rect.X - 20) / 2;
+                int y = (w.Rect.Y - 20) / 2;
+                int ww = w.Rect.Width / 2, hh = w.Rect.Height / 2;
+                result.Add((v, new Rectangle(x, y, ww, hh)));
+            }
+        }
+        catch { }
+        return result;
+    }
+    private static int OvrIn(Rectangle card, List<(int value, Rectangle rect)> numbers)
+    {
+        // a number counts as this card's if it sits in the upper-left part of the card
+        var rx = (int)(card.Width * 0.45);
+        var ry = (int)(card.Height * 0.30);
+        var area = new Rectangle(card.X, card.Y, rx, ry);
+
+        int best = 0, bestDist = int.MaxValue;
+        foreach (var (value, rect) in numbers)
+        {
+            if (!area.IntersectsWith(rect)) continue;
+            int d = Math.Abs(rect.X - card.X) + Math.Abs(rect.Y - card.Y);
+            if (d < bestDist) { bestDist = d; best = value; }
+        }
+        if (best > 0) return best;
+
+        // fall back to the closest number to the card's top-left corner
+        foreach (var (value, rect) in numbers)
+        {
+            int d = Math.Abs(rect.X - card.X) + Math.Abs(rect.Y - card.Y);
+            if (d < bestDist) { bestDist = d; best = value; }
+        }
+        // only accept it if it is reasonably close to this card
+        return bestDist <= (card.Width + card.Height) / 3 ? best : 0;
+    }
+    private static async Task<int> ReadOvrAsync(Bitmap card)
+    {
+        try
+        {
+            if (card.Width < 60 || card.Height < 60) return 0;
+
+            var variants = new List<Bitmap>();
+            try
+            {
+                // 2x is the most reliable variant - the digits are big and crisp
+                variants.Add(ScaleBitmap(card, 2f));                       // 0
+                variants.Add(new Bitmap(card));                            // 1
+                variants.Add(ScaleBitmap(BinaryBitmap(card), 2f));         // 2 - low contrast cards
+                variants.Add(ScaleBitmap(InvertBitmap(card), 2f));         // 3 - light text on dark
+                variants.Add(PadBitmap(ScaleBitmap(card, 2f), 20, Color.White));  // 4
+                variants.Add(PadBitmap(new Bitmap(card), 20, Color.White));       // 5
+                // tight crop of the number itself, padded to a size the OCR likes
+                var numRect = new Rectangle((int)(card.Width * 0.02), (int)(card.Height * 0.01),
+                                            (int)(card.Width * 0.28), (int)(card.Height * 0.17));
+                numRect = Clamp(numRect, card);
+                using (var num = WindowCapture.Crop(card, numRect))
+                {
+                    int targetW = Math.Max(170, num.Width * 3);
+                    int targetH = Math.Max(120, num.Height * 3);
+                    var padded = new Bitmap(targetW, targetH, PixelFormat.Format24bppRgb);
+                    using (var g = Graphics.FromImage(padded))
+                    {
+                        g.Clear(Color.White);
+                        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        g.DrawImage(num, (targetW - num.Width) / 2, (targetH - num.Height) / 2, num.Width * 2, num.Height * 2);
+                    }
+                    variants.Add(padded);                                   // 6
+                }
+            }
+            catch { }
+
+            foreach (var v in variants)
+            {
+                try
+                {
+                    var words = await OcrService.RecognizeWordsAsync(v, false);
+                    foreach (var w in words)
+                    {
+                        if (w.Rect.Y > v.Height * 0.34) continue;
+                        if (w.Rect.X > v.Width * 0.55) continue;
+                        if (TryGetNumber(w.Text, out int ovr) && ovr > 0 && ovr < 200) return ovr;
+                    }
+                }
+                catch { }
+            }
+            foreach (var v in variants) v.Dispose();
+        }
+        catch { }
+        return 0;
+    }
+
+    private static Bitmap ScaleBitmap(Bitmap src, float factor)
+    {
+        var b = new Bitmap((int)(src.Width * factor), (int)(src.Height * factor), PixelFormat.Format24bppRgb);
+        using var g = Graphics.FromImage(b);
+        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+        g.DrawImage(src, 0, 0, b.Width, b.Height);
+        return b;
+    }
+
+    private static Bitmap PadBitmap(Bitmap src, int pad, Color bg)
+    {
+        var b = new Bitmap(src.Width + pad * 2, src.Height + pad * 2, PixelFormat.Format24bppRgb);
+        using var g = Graphics.FromImage(b);
+        g.Clear(bg);
+        g.DrawImage(src, pad, pad);
+        return b;
+    }
+    private static Bitmap BinaryBitmap(Bitmap src)
+    {
+        var b = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
+        int min = 255, max = 0;
+        for (int y = 0; y < src.Height; y++)
+            for (int x = 0; x < src.Width; x++)
+            {
+                var c = src.GetPixel(x, y);
+                int l = (c.R * 30 + c.G * 59 + c.B * 11) / 100;
+                if (l < min) min = l;
+                if (l > max) max = l;
+            }
+        int cut = (min + max) / 2;
+        for (int y = 0; y < src.Height; y++)
+            for (int x = 0; x < src.Width; x++)
+            {
+                var c = src.GetPixel(x, y);
+                int l = (c.R * 30 + c.G * 59 + c.B * 11) / 100;
+                byte v = (byte)(l > cut ? 255 : 0);
+                b.SetPixel(x, y, Color.FromArgb(v, v, v));
+            }
+        return b;
+    }
+    private static Bitmap InvertBitmap(Bitmap src)
+    {
+        var b = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
+        for (int y = 0; y < src.Height; y++)
+            for (int x = 0; x < src.Width; x++)
+            {
+                var c = src.GetPixel(x, y);
+                int l = 255 - (c.R * 30 + c.G * 59 + c.B * 11) / 100;
+                b.SetPixel(x, y, Color.FromArgb(l, l, l));
+            }
+        return b;
+    }
     private async Task<bool> WaitForStableAsync(IntPtr hwnd, CancellationToken token, int maxMs = 0, int stableMs = 250, int pollMs = 80)
     {
         if (WaitAnimCheck.IsChecked != true) return true;   // animation waiting disabled
@@ -1481,17 +1519,16 @@ public partial class MainWindow : Window
         _config.Hwnd = IntPtrHwnd.FromIntPtr(w.Hwnd);
         _config.WindowTitle = w.Title;
         int.TryParse(DelayText.Text, out int d); _config.DelayMs = d > 0 ? d : 1500;
-        int.TryParse(ThresholdText.Text, out int t); _config.MatchThreshold = t > 0 ? t : 60;
         int.TryParse(SettleText.Text, out int sm); _config.SettleMaxMs = sm > 0 ? sm : 9000;
-        int.TryParse(RefThresholdText.Text, out int rt); _config.ReferenceThreshold = rt > 0 ? rt : 45;
+        int.TryParse(MinOvrText.Text, out int mo); _config.MinOvr = mo > 0 ? mo : 0;
+        _config.AcceptAnyTierByOvr = AcceptAnyByOvrCheck.IsChecked == true;
+        _config.OvrOnly = OvrOnlyCheck.IsChecked == true;
         int.TryParse(RefreshCapText.Text, out int rc); _config.RefreshCap = rc > 0 ? rc : 0;
         _config.MinRarity = MinRarityCombo.SelectedItem?.ToString() ?? _config.MinRarity;
         _config.MaxRarity = MaxRarityCombo.SelectedItem?.ToString() ?? _config.MaxRarity;
         _config.Strategy = StrategyCombo.SelectedIndex >= 0 ? StrategyCombo.SelectedIndex : 0;
         _config.CaptureMethod = CaptureMethodCombo.SelectedIndex >= 0 ? CaptureMethodCombo.SelectedIndex : 0;
-        _config.DetectMode = DetectModeCombo.SelectedIndex >= 0 ? DetectModeCombo.SelectedIndex : 0;
         _config.GroupRivalry = GroupRivalryCheck.IsChecked == true;
-        _config.DismissWithEsc = DismissEscCheck.IsChecked == true;
         _config.CardCount = CardCountCombo.SelectedIndex >= 0 ? CardCountCombo.SelectedIndex + 1 : 1;
         _config.CardLayout = ComboContent(CardLayoutCombo, "2 x 2 grid");
 
@@ -1501,7 +1538,6 @@ public partial class MainWindow : Window
         var token = _cts.Token;
 
         AppendLog("Started.");
-        LoadReferences();          // pick up any images added since launch
         InputSim.Focus(w.Hwnd);
         await Task.Delay(500);
         if (MinimizeWhileRunningCheck.IsChecked == true) WindowState = WindowState.Minimized;
@@ -1515,6 +1551,8 @@ public partial class MainWindow : Window
             // the odds belong to the current team - refreshing keeps the same team/year,
             // so only re-read them after a reroll (new team)
             bool? teamOdds = null;
+            // after picking a card the game requires a full reroll before the next pick
+            bool rerollNext = false;
 
             while (!token.IsCancellationRequested)
             {
@@ -1542,13 +1580,23 @@ public partial class MainWindow : Window
                     AppendLog($"Remaining: rerolls={rerollsLeft?.ToString() ?? "?"} refreshes={refreshesLeft?.ToString() ?? "?"}");
 
                 bool useRefresh;
-                if (teamOdds.HasValue)
+                if (rerollNext)
+                {
+                    // a card was just picked - the game wants a full reroll now
+                    rerollNext = false;
+                    useRefresh = false;
+                    teamOdds = null;
+                    AppendLog("Card picked - rerolling for a new team.");
+                }
+                else if (teamOdds.HasValue)
                 {
                     // same team as last cycle - the odds cannot have changed
                     useRefresh = teamOdds.Value;
                 }
                 else
                 {
+                    // the refresh decision always uses the rarity range + the odds menu,
+                    // even in OVR-only mode (that only changes which card gets taken)
                     useRefresh = await DecideRollTypeAsync(w.Hwnd, token, tierMin, tierMax);
                     teamOdds = useRefresh;
                 }
@@ -1556,6 +1604,7 @@ public partial class MainWindow : Window
                 // refresh cap: if we keep refreshing the same team without getting an
                 // eligible card, eventually roll a new team instead
                 int cap = _config.RefreshCap;
+                bool capTriggered = false;   // this cycle was a forced reroll after the cap
                 if (cap > 0 && useRefresh)
                 {
                     _refreshesWithoutHit++;
@@ -1563,6 +1612,7 @@ public partial class MainWindow : Window
                     {
                         AppendLog($"Refresh cap reached ({_refreshesWithoutHit}/{cap}) with no eligible card - rerolling for a new team.");
                         useRefresh = false;
+                        capTriggered = true;
                     }
                 }
                 if (!useRefresh)
@@ -1570,6 +1620,8 @@ public partial class MainWindow : Window
                     _refreshesWithoutHit = 0;   // new team -> counter restarts
                     teamOdds = null;             // new team -> re-read the odds next cycle
                 }
+                if (capTriggered)
+                    AppendLog("Cap cycle: not claiming anything unless a card is eligible.");
 
                 var (btnX, btnY) = ResolveButton(w.Hwnd, useRefresh);
                 AppendLog($"cycle: {(useRefresh ? "Refresh" : "Reroll")} button at client({btnX},{btnY})");
@@ -1616,38 +1668,56 @@ public partial class MainWindow : Window
                 for (int i = 0; i < found.Count; i++)
                     AppendLog($"  card {i + 1}/{found.Count}: {found[i].tier ?? "(unknown)"}  ribbon={found[i].ribbon}  {found[i].detail}");
 
-                // keep only cards inside the target range, prefer the HIGHEST rarity
+                // Target rules:
+                //   - cards whose rarity is inside [Min..Max] are always taken
+                //   - with "accept any tier by OVR" ticked, a card is ALSO taken when its
+                //     rating is at/above the minimum OVR, no matter the rarity
+                // The highest rarity wins; for equal rarity the higher OVR wins.
+                int minOvr = _config.MinOvr;
+                bool anyByOvr = _config.AcceptAnyTierByOvr && minOvr > 0;
+                bool ovrOnly = _config.OvrOnly && minOvr > 0;   // min OVR of 0 = switch ignored
                 var targets = found
-                    .Where(f => f.tier != null)
-                    .Select(f => (f, grp: RarityCatalog.GroupIndex(_config.Rarities, f.tier, _config.GroupRivalry)))
-                    .Where(x => x.grp >= tierMin && x.grp <= tierMax)
-                    .OrderByDescending(x => x.grp)
+                    // in OVR-only mode the rarity is irrelevant, so a card with an
+                    // unknown tier still counts
+                    .Where(f => f.tier != null || ovrOnly)
+                    .Select(f =>
+                    {
+                        int grp = f.tier != null
+                            ? RarityCatalog.GroupIndex(_config.Rarities, f.tier, _config.GroupRivalry)
+                            : -1;
+                        bool inRange = grp >= tierMin && grp <= tierMax;
+                        // a card rated at/above the minimum counts no matter what tier it
+                        // was detected as - the rating is the signal that matters here
+                        bool byOvr = (anyByOvr || ovrOnly) && f.ovr >= minOvr;
+                        return (f, grp, inRange, byOvr);
+                    })
+                    .Where(x => ovrOnly ? x.byOvr : (x.inRange || x.byOvr))
+                    .OrderByDescending(x => ovrOnly ? x.f.ovr : ((x.byOvr && !x.inRange) ? int.MaxValue : 0))
+                    .ThenByDescending(x => x.grp)
+                    .ThenByDescending(x => x.f.ovr)
                     .ToList();
 
                 var bestTarget = targets.Count > 0 ? targets[0].f
-                                : default((Rectangle slice, string? tier, bool ribbon, string detail, double score));
+                                : default((Rectangle slice, string? tier, bool ribbon, string detail, double score, int ovr, double margin));
 
                 if (targets.Count > 0)
                 {
                     // if the highest tier is blocked (already on team / position full) try the next best
                     if (bestTarget.ribbon)
                     {
-                        AppendLog($"Blocked (position full / already on team) on {bestTarget.tier} - skipping.");
+                        AppendLog($"Blocked (position full / already on team) on {bestTarget.tier ?? "card"} - skipping.");
                         var alt = targets.Select(t => t.f).FirstOrDefault(f => !f.ribbon);
-                        bestTarget = alt.tier != null ? alt : default;
+                        bestTarget = alt.slice != Rectangle.Empty ? alt : default;
                     }
 
-                    if (bestTarget.tier != null)
+                    if (bestTarget.slice != Rectangle.Empty)
                     {
-                        // a weak reference match is not worth claiming - it could be the
-                        // wrong card entirely
-                        if (_profiles.Count > 0 && bestTarget.score > _config.ClaimMaxDistance)
-                        {
-                            AppendLog($"Match too weak (d={bestTarget.score:F0} > {_config.ClaimMaxDistance}) - not claiming.");
-                            await DismissAsync(w.Hwnd, token);
-                            await Task.Delay(200, token);
-                            continue;
-                        }
+                        // the colour of the reference pixel decides everything - a card
+                        // only has a tier when the colour was close to that tier's colour
+                        // AND clearly closer than to any other tier (see DetectAllAsync).
+                        // A card that qualifies on its OVR may have an unknown tier,
+                        // because the rarity is irrelevant for that rule.
+                        bool ovrQualified = targets.Count > 0 && targets[0].byOvr;
 
                         bool blocked = false;
                         if (_config.BlockedW > 0 && _config.BlockedR >= 0)
@@ -1665,28 +1735,26 @@ public partial class MainWindow : Window
                         if (blocked)
                         {
                             AppendLog("Blocked (manual region) - skipping claim.");
-                            await DismissAsync(w.Hwnd, token);
                         }
                         else
                         {
                             int cx = _config.CardX + bestTarget.slice.X + bestTarget.slice.Width / 2;
                             int cy = _config.CardY + bestTarget.slice.Y + bestTarget.slice.Height / 2;
                             ClickAt(w.Hwnd, cx, cy);
-                            AppendLog($"TARGET FOUND: {bestTarget.tier} - clicked card {found.IndexOf(bestTarget) + 1}.");
+                            AppendLog($"TARGET FOUND: {bestTarget.tier ?? "unknown tier"}{(ovrQualified ? $" (by OVR {bestTarget.ovr})" : "")} - clicked card {found.IndexOf(bestTarget) + 1}.");
                             _refreshesWithoutHit = 0;   // got what we came for
+                            rerollNext = true;          // only one pick per team - reroll next
                             await Task.Delay(700, token);
                             await WaitForStableAsync(w.Hwnd, token);
                         }
                     }
                     else
                     {
-                        await DismissAsync(w.Hwnd, token);
                     }
                 }
                 else
                 {
                     // nothing eligible - the next roll button press dismisses the card
-                    await DismissAsync(w.Hwnd, token);
                 }
 
                 await Task.Delay(200, token);

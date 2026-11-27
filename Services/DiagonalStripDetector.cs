@@ -5,54 +5,82 @@ using System.Drawing.Imaging;
 namespace HockeyRoller.Services;
 
 /// <summary>
-/// Detects the diagonal black ribbon (with white text) that the game draws across a card
-/// when the player is already on your team or the position is full.
+/// Detects the "POSITION FILLED" / "ALREADY ON TEAM" ribbon: a black band angled
+/// slightly across the card with white text on it.
 /// </summary>
 public static class DiagonalStripDetector
 {
-    public static bool HasDiagonalStrip(Bitmap bmp, out double score)
+    const int DARK_MAX = 40;      // a pixel counts as "banner black"
+    const int LIGHT_MIN = 165;    // a pixel counts as "text white"
+
+    static bool IsDark(Color c) => Math.Max(c.R, Math.Max(c.G, c.B)) <= DARK_MAX;
+    static bool IsLight(Color c) => Math.Min(c.R, Math.Min(c.G, c.B)) >= LIGHT_MIN;
+
+    /// <summary>
+    /// True when the card carries the ribbon. <paramref name="score"/> is the number of
+    /// "white text inside a thick black band" pixels that were found.
+    /// </summary>
+    public static bool HasBanner(Bitmap card, out double score)
     {
         score = 0;
         try
         {
-            var rect = new Rectangle(0, 0, bmp.Width, bmp.Height);
-            if (bmp.Width < 20 || bmp.Height < 20) return false;
+            if (card == null || card.Width < 20 || card.Height < 20) return false;
 
-            var dark = new bool[bmp.Width * bmp.Height];
-            int darkCount = 0;
-            for (int y = 0; y < bmp.Height; y++)
-                for (int x = 0; x < bmp.Width; x++)
+            int w = card.Width, h = card.Height;
+            int dark = 0, whiteOnDark = 0;
+            int minX = int.MaxValue, maxX = -1;
+
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
                 {
-                    var c = bmp.GetPixel(x, y);
-                    int max = Math.Max(c.R, Math.Max(c.G, c.B));
-                    bool isDark = max < 55;   // near-black
-                    dark[y * bmp.Width + x] = isDark;
-                    if (isDark) darkCount++;
+                    var c = card.GetPixel(x, y);
+                    if (IsDark(c)) { dark++; continue; }
+                    if (!IsLight(c)) continue;
+
+                    // is the text sitting on a black band?
+                    int darkNeighbours = 0;
+                    for (int dy = -1; dy <= 1; dy++)
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            if (dx == 0 && dy == 0) continue;
+                            int nx = x + dx, ny = y + dy;
+                            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                            if (IsDark(card.GetPixel(nx, ny))) darkNeighbours++;
+                        }
+                    if (darkNeighbours < 3) continue;
+
+                    // the ribbon is a thick band: there must be black well above and below
+                    int above = 0, below = 0;
+                    for (int d = 3; d <= 14; d++)
+                    {
+                        if (y - d >= 0 && IsDark(card.GetPixel(x, y - d))) above++;
+                        if (y + d < h && IsDark(card.GetPixel(x, y + d))) below++;
+                    }
+                    if (above < 4 || below < 4) continue;
+
+                    whiteOnDark++;
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
                 }
 
-            if (darkCount < bmp.Width * bmp.Height * 0.01) return false;
+            score = whiteOnDark;
+            if (whiteOnDark == 0) return false;
 
-            int step = Math.Max(3, Math.Min(bmp.Width, bmp.Height) / 30);
-            int diag = 0, hv = 0;
-
-            for (int y = 0; y + step < bmp.Height; y++)
-                for (int x = 0; x + step < bmp.Width; x++)
-                {
-                    if (!dark[y * bmp.Width + x]) continue;
-                    // 45 degree diagonals
-                    if (dark[(y + step) * bmp.Width + (x + step)]) diag++;
-                    if (dark[(y + step) * bmp.Width + (x - step)] && x >= step) diag++;
-                    // horizontal / vertical reference
-                    if (dark[y * bmp.Width + (x + step)]) hv++;
-                    if (dark[(y + step) * bmp.Width + x]) hv++;
-                }
-
-            if (hv == 0 && diag == 0) return false;
-            double ratio = (double)diag / Math.Max(1, hv);
-            // a real diagonal ribbon is much more "diagonal" than axis-aligned
-            score = ratio;
-            return diag > (bmp.Width * bmp.Height / 120) && ratio > 1.15;
+            double darkRatio = (double)dark / (w * h);
+            double span = maxX > minX ? (maxX - minX) / (double)w : 0;
+            // the ribbon text has to be a decent amount of pixels for the card size
+            double minPixels = Math.Max(35, w * 0.12);
+            // a real ribbon: enough text pixels, a real black band, and the text spans
+            // a good part of the card
+            return whiteOnDark >= minPixels && darkRatio >= 0.03 && span >= 0.28;
         }
         catch { return false; }
+    }
+
+    /// <summary>Kept for the old call sites - returns true when a ribbon was found.</summary>
+    public static bool HasDiagonalStrip(Bitmap card, out double score)
+    {
+        return HasBanner(card, out score);
     }
 }

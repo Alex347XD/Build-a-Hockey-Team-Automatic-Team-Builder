@@ -172,8 +172,8 @@ public static class OcrService
         return result;
     }
 
-    /// <summary>Greyscale + Otsu threshold. Makes low-contrast UI text (e.g. dark red on
-    /// dark navy) readable for OCR.</summary>
+    /// <summary>Greyscale + contrast stretch. Makes low-contrast UI text readable for OCR
+    /// without flattening it into a hard threshold (which destroys large numbers).</summary>
     private static Bitmap EnhanceContrast(Bitmap src)
     {
         var dst = new Bitmap(src.Width, src.Height, PixelFormat.Format24bppRgb);
@@ -181,8 +181,7 @@ public static class OcrService
         var outData = dst.LockBits(new Rectangle(0, 0, dst.Width, dst.Height), ImageLockMode.WriteOnly, PixelFormat.Format24bppRgb);
         try
         {
-            var hist = new long[256];
-            int total = src.Width * src.Height;
+            byte min = 255, max = 0;
             unsafe
             {
                 byte* p = (byte*)data.Scan0;
@@ -191,29 +190,13 @@ public static class OcrService
                 {
                     byte* row = p + y * stride;
                     for (int x = 0; x < src.Width; x++)
-                        hist[(row[x * 3] * 30 + row[x * 3 + 1] * 59 + row[x * 3 + 2] * 11) / 100]++;
+                    {
+                        int g = (row[x * 3] * 30 + row[x * 3 + 1] * 59 + row[x * 3 + 2] * 11) / 100;
+                        if (g < min) min = (byte)g;
+                        if (g > max) max = (byte)g;
+                    }
                 }
-
-                // Otsu threshold
-                double sum = 0;
-                for (int i = 0; i < 256; i++) sum += (double)i * hist[i];
-                double sumB = 0, wB = 0, maxVar = -1;
-                int threshold = 128;
-                for (int t = 0; t < 256; t++)
-                {
-                    wB += hist[t];
-                    if (wB == 0) continue;
-                    double wF = total - wB;
-                    if (wF == 0) break;
-                    sumB += (double)t * hist[t];
-                    double mB = sumB / wB;
-                    double mF = (sum - sumB) / wF;
-                    double between = wB * wF * (mB - mF) * (mB - mF);
-                    if (between > maxVar) { maxVar = between; threshold = t; }
-                }
-                // keep a little of the original tone so anti-aliased edges survive
-                int cut = threshold;
-
+                double range = Math.Max(1, max - min);
                 byte* o = (byte*)outData.Scan0;
                 int oStride = outData.Stride;
                 for (int y = 0; y < src.Height; y++)
@@ -223,7 +206,8 @@ public static class OcrService
                     for (int x = 0; x < src.Width; x++)
                     {
                         int g = (row[x * 3] * 30 + row[x * 3 + 1] * 59 + row[x * 3 + 2] * 11) / 100;
-                        int v = g > cut ? 255 : 0;
+                        int v = (int)Math.Round((g - min) * 255.0 / range);
+                        if (v < 0) v = 0; if (v > 255) v = 255;
                         orow[x * 3] = (byte)v;
                         orow[x * 3 + 1] = (byte)v;
                         orow[x * 3 + 2] = (byte)v;

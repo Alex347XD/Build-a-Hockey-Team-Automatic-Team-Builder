@@ -28,6 +28,8 @@ public class TierProfile
     public double DominantHue { get; set; }     // hue of the strongest band
     public double BodyHue { get; set; }         // hue of the card body (decides shiny tiers)
     public double BodySat { get; set; }
+    public double BodyValue { get; set; }        // brightness of the card body
+    public double PeakValue { get; set; }        // brightness of the frame colour
     public double[] Hist => HueHist;
     public Color Body { get; set; } = Color.Black;
 
@@ -40,10 +42,22 @@ public class TierProfile
     {
         var p = new TierProfile { Name = name, SourceFile = source };
 
-        var r = new Rectangle(
+        var clip = new Rectangle(
             Math.Max(0, win.X), Math.Max(0, win.Y),
             Math.Min(win.Width, bmp.Width - win.X), Math.Min(win.Height, bmp.Height - win.Y));
-        if (r.Width < 6 || r.Height < 6) return p;
+        if (clip.Width < 6 || clip.Height < 6) return p;
+
+        // Normalise every card to the same size before sampling. The reference images are
+        // square while the cards in game are portrait, so without this the sampled frame
+        // band would cover different content for each side and nothing would match.
+        const int N = 128;
+        using var norm = new Bitmap(N, N, PixelFormat.Format24bppRgb);
+        using (var g = Graphics.FromImage(norm))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(bmp, new Rectangle(0, 0, N, N), clip, GraphicsUnit.Pixel);
+        }
+        var r = new Rectangle(0, 0, N, N);
 
         int bandX = Math.Max(1, (int)(r.Width * 0.18));
         int bandY = Math.Max(1, (int)(r.Height * 0.18));
@@ -69,7 +83,7 @@ public class TierProfile
                               (upperHalf && (x < r.X + bandX || x >= r.X + r.Width - bandX));
                 if (!onBand) continue;
 
-                var c = bmp.GetPixel(x, y);
+                var c = norm.GetPixel(x, y);
                 double h, s, v;
                 ColorMatch.RgbToHsv(c.R, c.G, c.B, out h, out s, out v);
                 satSum += s; counted++;
@@ -87,6 +101,9 @@ public class TierProfile
         if (counted == 0) return p;
         p.Saturation = satSum / counted;
         p.Peak = peak;
+        double pk, ps, pv;
+        ColorMatch.RgbToHsv(peak.R, peak.G, peak.B, out pk, out ps, out pv);
+        p.PeakValue = pv;
         double total = p.HueHist.Sum();
         if (total > 0) for (int i = 0; i < Bins; i++) p.HueHist[i] /= total;
         double resultant = wsum > 0 ? Math.Sqrt(sumX * sumX + sumY * sumY) / wsum : 1;
@@ -107,14 +124,55 @@ public class TierProfile
         for (int i = 1; i < Bins; i++) if (p.HueHist[i] > p.HueHist[topBin]) topBin = i;
         p.DominantHue = topBin * 10 + 5;
 
-        var inner = new Rectangle(r.X + (int)(r.Width * 0.25), r.Y + (int)(r.Height * 0.25),
-                                  Math.Max(1, (int)(r.Width * 0.5)), Math.Max(1, (int)(r.Height * 0.5)));
-        p.Body = ColorMatch.DominantColor(bmp, inner, skipDark: true);
+        // The card body colour is sampled from the strips just inside the left/right frame,
+        // above the name banner. On a real card that area is the tier's background tint
+        // (the middle is covered by the player photo and the flag) - and it is the same area
+        // on a recreated background, so both compare the same thing.
+        p.Body = SampleBodyTint(norm, r, bandX, bandY);
         double bh, bs, bv;
         ColorMatch.RgbToHsv(p.Body.R, p.Body.G, p.Body.B, out bh, out bs, out bv);
         p.BodyHue = bh;
         p.BodySat = bs;
+        p.BodyValue = bv;
         return p;
+    }
+
+    /// <summary>Dominant colour of the background just inside the frame (left + right strips).</summary>
+    public static Color SampleBodyTint(Bitmap bmp, Rectangle r, int bandX, int bandY)
+    {
+        var counts = new Dictionary<int, int>();
+        var sums = new Dictionary<int, long[]>();
+
+        void Add(int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= bmp.Width || y >= bmp.Height) return;
+            var c = bmp.GetPixel(x, y);
+            int mx = Math.Max(c.R, Math.Max(c.G, c.B));
+            if (mx < 30) return;                       // ignore near-black
+            int key = ((c.R >> 4) << 8) | ((c.G >> 4) << 4) | (c.B >> 4);
+            counts.TryGetValue(key, out int n); counts[key] = n + 1;
+            if (!sums.TryGetValue(key, out var s)) { s = new long[3]; sums[key] = s; }
+            s[0] += c.R; s[1] += c.G; s[2] += c.B;
+        }
+
+        int y0 = r.Y + (int)(r.Height * 0.22);
+        int y1 = r.Y + (int)(r.Height * 0.72);
+        int strip = Math.Max(1, bandX / 2);
+        for (int y = y0; y < y1; y += 2)
+        {
+            for (int x = r.X + bandX; x < r.X + bandX + strip; x++) Add(x, y);
+            for (int x = r.X + r.Width - bandX - strip; x < r.X + r.Width - bandX; x++) Add(x, y);
+        }
+        if (counts.Count == 0)
+        {
+            var inner = new Rectangle(r.X + (int)(r.Width * 0.25), r.Y + (int)(r.Height * 0.25),
+                                      Math.Max(1, (int)(r.Width * 0.5)), Math.Max(1, (int)(r.Height * 0.5)));
+            return ColorMatch.DominantColor(bmp, inner, skipDark: true);
+        }
+        int bestKey = counts.Keys.First();
+        foreach (var kv in counts) if (kv.Value > counts[bestKey]) bestKey = kv.Key;
+        var s2 = sums[bestKey];
+        return Color.FromArgb((int)(s2[0] / counts[bestKey]), (int)(s2[1] / counts[bestKey]), (int)(s2[2] / counts[bestKey]));
     }
 
     public static double HueDistance(double a, double b)
@@ -141,215 +199,26 @@ public class TierProfile
             // maroon (mythic) body - their RGB values are nearly identical.
             double bodyHueTerm = HueDistance(BodyHue, other.BodyHue) * 0.9;
             double bodySatTerm = Math.Abs(BodySat - other.BodySat) * 50;
+            double bodyValTerm = Math.Abs(BodyValue - other.BodyValue) * 40;
             double bodyRgbTerm = ColorMatch.Distance(Body, other.Body) / 255.0 * 40;
             // a rainbow frame on both sides is a good sign, on one side only it means the
             // card is a shiny variant of the other tier
             double rainbowTerm = aMulti && bMulti ? Math.Abs(RainbowBins - other.RainbowBins) * 5 : 8;
             double satTermRainbow = Math.Abs(Saturation - other.Saturation) * 25;
-            return bodyHueTerm + bodySatTerm + bodyRgbTerm + rainbowTerm + satTermRainbow;
+            return bodyHueTerm + bodySatTerm + bodyValTerm + bodyRgbTerm + rainbowTerm + satTermRainbow;
         }
 
         double hueTerm = HueDistance(DominantHue, other.DominantHue) * 1.2;
-        double peakTerm = ColorMatch.Distance(Peak, other.Peak) / 255.0 * 60;
+        // Icon (bright violet #7C2ED1) and Franchise (dark purple #331242) share the same
+        // hue - only the brightness separates them, so value is compared separately
+        double valueTerm = Math.Abs(PeakValue - other.PeakValue) * 50;
+        double peakTerm = ColorMatch.Distance(Peak, other.Peak) / 255.0 * 25 + valueTerm;
         double satTerm = Math.Abs(Saturation - other.Saturation) * 40;
         double dispTerm = Math.Abs(Dispersion - other.Dispersion) * 20;
 
+        // The card body is not used for the tier match: on a real card the middle is the
+        // player's team banner, so it says nothing about the tier. The frame is the tier.
         return hueTerm + peakTerm + satTerm + dispTerm;
     }
 }
 
-public static class ReferenceLibrary
-{
-    public static string DefaultFolder => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HockeyRoller", "references");
-
-    private static string Normalize(string s)
-    {
-        var sb = new System.Text.StringBuilder();
-        foreach (char ch in s.ToLowerInvariant())
-            if (char.IsLetterOrDigit(ch)) sb.Append(ch);
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// Removes the uniform border (screenshots often have a black/transparent margin
-    /// around the card). Without this the frame samples are diluted by the margin.
-    /// </summary>
-    public static Bitmap TrimBackground(Bitmap bmp)
-    {
-        try
-        {
-            bool hasAlpha = Image.IsAlphaPixelFormat(bmp.PixelFormat);
-            Func<int, int, bool> isBg = (x, y) =>
-            {
-                var c = bmp.GetPixel(x, y);
-                if (hasAlpha && c.A < 40) return true;
-                int max = Math.Max(c.R, Math.Max(c.G, c.B));
-                int min = Math.Min(c.R, Math.Min(c.G, c.B));
-                return max < 45 && (max - min) < 25;      // near-black / near-grey
-            };
-
-            int top = 0, bottom = bmp.Height - 1, left = 0, right = bmp.Width - 1;
-
-            bool RowIsBg(int y)
-            {
-                int bg = 0, total = 0;
-                for (int x = left; x <= right; x += 2) { total++; if (isBg(x, y)) bg++; }
-                return total > 0 && (double)bg / total > 0.75;
-            }
-            bool ColIsBg(int x)
-            {
-                int bg = 0, total = 0;
-                for (int y = top; y <= bottom; y += 2) { total++; if (isBg(x, y)) bg++; }
-                return total > 0 && (double)bg / total > 0.75;
-            }
-
-            while (top < bottom && RowIsBg(top)) top++;
-            while (bottom > top && RowIsBg(bottom)) bottom--;
-            while (left < right && ColIsBg(left)) left++;
-            while (right > left && ColIsBg(right)) right--;
-
-            int w = right - left + 1, h = bottom - top + 1;
-            if (w < 10 || h < 10 || (w == bmp.Width && h == bmp.Height)) return bmp;
-
-            var trimmed = new Bitmap(w, h, PixelFormat.Format24bppRgb);
-            using (var g = Graphics.FromImage(trimmed))
-                g.DrawImage(bmp, new Rectangle(0, 0, w, h), new Rectangle(left, top, w, h), GraphicsUnit.Pixel);
-            return trimmed;
-        }
-        catch { return bmp; }
-    }
-
-    public static List<TierProfile> Load(string folder, IEnumerable<string> tierNames)
-    {
-        var result = new List<TierProfile>();
-        if (!Directory.Exists(folder)) return result;
-
-        var files = Directory.GetFiles(folder)
-            .Where(f => f.EndsWith(".png", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)
-                     || f.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase))
-            .ToList();
-
-        foreach (var tier in tierNames)
-        {
-            string want = Normalize(tier);
-            var file = files.FirstOrDefault(f => Normalize(Path.GetFileNameWithoutExtension(f)) == want);
-            if (file == null) continue;
-            try
-            {
-                using var raw = new Bitmap(file);
-                using var bmp = TrimBackground(raw);
-                var prof = TierProfile.FromWindow(bmp, new Rectangle(0, 0, bmp.Width, bmp.Height), tier, Path.GetFileName(file));
-                result.Add(prof);
-            }
-            catch { }
-        }
-        return result;
-    }
-}
-
-public class CardHit
-{
-    public Rectangle Rect { get; set; }        // inside the searched region
-    public string Tier { get; set; } = "";
-    public double Distance { get; set; }
-    public double Margin { get; set; }         // gap to the next best (different) tier
-    public bool Rainbow { get; set; }          // rainbow (prismatic or shiny) frame
-}
-
-public static class CardFinder
-{
-    /// <summary>
-    /// Searches a region for cards using the reference profiles.
-    /// The region is split into the expected card cells (2x2 grid etc.) and inside each
-    /// cell a sub-window of several sizes/positions is tested, so the card is found even
-    /// when it is much smaller than the cell or not perfectly aligned.
-    /// </summary>
-    public static List<CardHit> Find(Bitmap region, List<TierProfile> profiles, int cardCount,
-                                      string layout, double maxDistance = 45, int maxCards = 4)
-    {
-        var hits = new List<CardHit>();
-        if (profiles == null || profiles.Count == 0 || region.Width < 20 || region.Height < 20)
-            return hits;
-
-        // the cells the cards sit in (coordinates are relative to the region)
-        var cells = new List<Rectangle>();
-        switch (layout)
-        {
-            case "Stacked (vertical)":
-                {
-                    int h = region.Height / Math.Max(1, cardCount);
-                    for (int i = 0; i < cardCount; i++) cells.Add(new Rectangle(0, i * h, region.Width, h));
-                    break;
-                }
-            case "Side by side":
-                {
-                    int w = region.Width / Math.Max(1, cardCount);
-                    for (int i = 0; i < cardCount; i++) cells.Add(new Rectangle(i * w, 0, w, region.Height));
-                    break;
-                }
-            default: // 2 x 2 grid
-                {
-                    int w = region.Width / 2, h = region.Height / 2;
-                    cells.Add(new Rectangle(0, 0, w, h));
-                    cells.Add(new Rectangle(w, 0, w, h));
-                    cells.Add(new Rectangle(0, h, w, h));
-                    cells.Add(new Rectangle(w, h, w, h));
-                    break;
-                }
-        }
-
-        double[] sizeScales = { 1.0, 0.85, 0.7, 0.55, 0.42 };
-        double[] posScales = { 0.0, 0.15, 0.3, 0.45 };
-
-        foreach (var cell in cells)
-        {
-            CardHit? best = null;
-            double bestScore = double.MaxValue;
-            string bestTier = "";
-            double bestDist = 0;
-            double secondDist = double.MaxValue;
-            bool bestRainbow = false;
-
-            foreach (double ss in sizeScales)
-            {
-                int w = (int)(cell.Width * ss), h = (int)(cell.Height * ss);
-                if (w < 12 || h < 12) continue;
-                foreach (double px in posScales)
-                    foreach (double py in posScales)
-                    {
-                        int x = cell.Left + (int)((cell.Width - w) * px);
-                        int y = cell.Top + (int)((cell.Height - h) * py);
-                        var win = new Rectangle(x, y, w, h);
-                        var prof = TierProfile.FromWindow(region, win);
-                        if (prof.Peak.R + prof.Peak.G + prof.Peak.B == 0) continue;
-
-                        var ranked = profiles.Select(p => (p.Name, d: prof.DistanceTo(p))).OrderBy(t => t.d).ToList();
-                        if (ranked.Count == 0) continue;
-                        double d = ranked[0].d;
-                        // prefer a window that covers the whole card - a small window that
-                        // happens to match (e.g. the grey face of a silver card) is worse
-                        double score = d + (1 - ss) * 35;
-
-                        if (score < bestScore)
-                        {
-                            bestScore = score;
-                            bestTier = ranked[0].Name;
-                            bestDist = d;
-                            bestRainbow = prof.RainbowBins >= 8;
-                            secondDist = ranked.Count > 1 ? ranked[1].d : double.MaxValue;
-                            best = new CardHit { Rect = win, Tier = bestTier, Distance = d, Rainbow = bestRainbow };
-                        }
-                    }
-            }
-            if (best != null && best.Distance <= maxDistance)
-            {
-                best.Margin = secondDist == double.MaxValue ? 999 : secondDist - bestDist;
-                hits.Add(best);
-            }
-        }
-        return hits;
-    }
-}
