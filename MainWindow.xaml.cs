@@ -43,9 +43,32 @@ public partial class MainWindow : Window
         LegacyMouseEventCheck.IsChecked = InputSim.UseLegacyMouseEvent;
         InputSim.UseLegacyMouseEvent = LegacyMouseEventCheck.IsChecked == true;
         _ = Task.Run(async () => { _roster = await TeamRoster.LoadAsync(); AppendLog($"Team roster: {_roster.Count} player(s) loaded."); });
+        _ = Task.Run(async () => await CheckForUpdatesAsync());   // auto-update from GitHub releases
     }
 
-    // ---------------- ESC = stop rolling and close ----------------
+
+    /// <summary>Checks GitHub releases and installs a newer version automatically.</summary>
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            var upd = await UpdateService.CheckAsync();
+            if (upd == null)
+            {
+                AppendLog($"Up to date (v{UpdateService.CurrentVersion}).");
+                return;
+            }
+            AppendLog($"Update available: {upd.Tag} (current v{upd.CurrentVersion}) - downloading {UpdateService.AssetName}...");
+            bool ok = await UpdateService.DownloadAndInstallAsync(upd);
+            if (ok)
+            {
+                AppendLog("Update installed - restarting...");
+                Dispatcher.Invoke(() => System.Windows.Application.Current.Shutdown());
+            }
+            else AppendLog("Update download/checksum failed - staying on current version.");
+        }
+        catch (Exception ex) { AppendLog("Update check failed: " + ex.Message); }
+    }    // ---------------- ESC = stop rolling and close ----------------
     private static Win32.LowLevelKeyboardProc? _hookProc;
     private IntPtr _hookHandle = IntPtr.Zero;
 
