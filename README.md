@@ -33,7 +33,7 @@ cards you actually want.
 * Windows 10 / 11 (x64)
 * [.NET 9 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/9.0) — only needed to
   *run from source*; the published exe is self-contained.
-* Roblox with **Build a Hockey Team!** installed
+* Roblox installed.
 
 ---
 
