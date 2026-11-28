@@ -47,8 +47,8 @@ public class AppConfig
     public int CardCount { get; set; } = 1;
     public string CardLayout { get; set; } = "2 x 2 grid";
     // Roll type buttons
-    public int RerollX { get; set; }
-    public int RerollY { get; set; }
+
+
     public int RefreshX { get; set; }
     public int RefreshY { get; set; }
     public int OddsBtnX { get; set; } = -1;

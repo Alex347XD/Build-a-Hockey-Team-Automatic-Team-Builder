@@ -39,9 +39,21 @@ public static class OcrService
         try
         {
             var lang = new Windows.Globalization.Language("en-US");
-            return OcrEngine.TryCreateFromLanguage(lang);
+            var e = OcrEngine.TryCreateFromLanguage(lang);
+            if (e != null) return e;
         }
-        catch { return null; }
+        catch { }
+        // any installed recognizer language (other machines may not have en-US)
+        try
+        {
+            foreach (var l in OcrEngine.AvailableRecognizerLanguages)
+            {
+                var e = OcrEngine.TryCreateFromLanguage(l);
+                if (e != null) return e;
+            }
+        }
+        catch { }
+        return null;
     }
 
     public class WordInfo

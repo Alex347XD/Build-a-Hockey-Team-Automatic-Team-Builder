@@ -197,7 +197,7 @@ public partial class MainWindow : Window
     private void LoadConfigToUI()
     {
         RollPtText.Text = _config.RollX == 0 && _config.RollY == 0 ? "" : $"{_config.RollX},{_config.RollY}";
-        RerollPtText.Text = _config.RerollX == 0 && _config.RerollY == 0 ? "" : $"{_config.RerollX},{_config.RerollY}";
+
         RefreshPtText.Text = _config.RefreshX == 0 && _config.RefreshY == 0 ? "" : $"{_config.RefreshX},{_config.RefreshY}";
         OddsBtnPtText.Text = _config.OddsBtnX < 0 ? "" : $"{_config.OddsBtnX},{_config.OddsBtnY}";
         OddsClosePtText.Text = _config.OddsCloseX < 0 ? "" : $"{_config.OddsCloseX},{_config.OddsCloseY}";
@@ -365,7 +365,7 @@ public partial class MainWindow : Window
             }
             Box(_config.OddsX, _config.OddsY, _config.OddsW, _config.OddsH, Color.Orange, "ODDS");
             Marker(_config.RollX, _config.RollY, Color.Red, "ROLL");
-            Marker(_config.RerollX, _config.RerollY, Color.Cyan, "REROLL");
+
             Marker(_config.RefreshX, _config.RefreshY, Color.Yellow, "REFRESH");
             Marker(_config.OddsBtnX, _config.OddsBtnY, Color.Orange, "ODDSBTN");
             Marker(_config.OddsCloseX, _config.OddsCloseY, Color.OrangeRed, "ODDSCLOSE");
@@ -436,12 +436,12 @@ public partial class MainWindow : Window
 
     private void PickRoll_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Roll; PickStatusText.Text = "Pick mode: Roll Button - click on the roll button."; }
     private void PickCardRegion_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.CardRegion; _dragging = false; PickStatusText.Text = "Pick mode: Card Region - drag a rectangle over the card."; }
-    private void PickReroll_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Reroll; PickStatusText.Text = "Pick mode: Reroll Button - click."; }
+
     private void PickRefresh_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Refresh; PickStatusText.Text = "Pick mode: Refresh Button - click."; }
     private void PickOddsBtn_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.OddsBtn; PickStatusText.Text = "Pick mode: Odds Button - click."; }
     private void PickOddsRegion_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.OddsRegion; _dragging = false; PickStatusText.Text = "Pick mode: Odds Region - drag."; }
     private void PickOddsClose_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.OddsClose; PickStatusText.Text = "Pick mode: Odds Close - click the button that shuts the odds panel."; }
-    private void PickOddsTeamTab_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.OddsTeamTab; PickStatusText.Text = "Pick mode: THIS TEAM tab - click the refresh-odds tab inside the odds panel."; }
+    private void PickOddsTeamTab_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.OddsTeamTab; PickStatusText.Text = "Pick mode: Odds scroll pos - click inside the odds list (the scroll position; the THIS TEAM tab)."; }
     private void PickBlocked_Click(object s, RoutedEventArgs e) { _pickMode = PickMode.Blocked; _dragging = false; PickStatusText.Text = "Pick mode: Blocked Region - drag."; }
     private void ClearBlocked_Click(object s, RoutedEventArgs e) { _config.BlockedX = -1; _config.BlockedY = -1; _config.BlockedW = 0; _config.BlockedH = 0; _config.BlockedR = -1; BlockedRegionText.Text = ""; }
 
@@ -465,7 +465,7 @@ public partial class MainWindow : Window
         switch (_pickMode)
         {
             case PickMode.Roll: _config.RollX = x; _config.RollY = y; RollPtText.Text = $"{x},{y}"; break;
-            case PickMode.Reroll: _config.RerollX = x; _config.RerollY = y; RerollPtText.Text = $"{x},{y}"; break;
+
             case PickMode.Refresh: _config.RefreshX = x; _config.RefreshY = y; RefreshPtText.Text = $"{x},{y}"; break;
             case PickMode.OddsBtn: _config.OddsBtnX = x; _config.OddsBtnY = y; OddsBtnPtText.Text = $"{x},{y}"; break;
             case PickMode.OddsClose: _config.OddsCloseX = x; _config.OddsCloseY = y; OddsClosePtText.Text = $"{x},{y}"; break;
@@ -730,10 +730,12 @@ public partial class MainWindow : Window
     }
     private (int x, int y) ResolveButton(IntPtr hwnd, bool refresh)
     {
+        // in this game ROLL and REROLL are the SAME button; only REFRESH is separate
         if (refresh && _config.RefreshX != 0) return (_config.RefreshX, _config.RefreshY);
-        if (!refresh && _config.RollX != 0) return (_config.RollX, _config.RollY);
-        if (!refresh && _config.RerollX != 0) return (_config.RerollX, _config.RerollY);
-        if (refresh && _config.RerollX != 0) return (_config.RerollX, _config.RerollY);
+        // reroll uses the roll button; fall back to a separately-picked reroll point
+        if (_config.RollX != 0) return (_config.RollX, _config.RollY);
+        if (_config.RollX != 0) return (_config.RollX, _config.RollY);
+        if (refresh && _config.RefreshX != 0) return (_config.RefreshX, _config.RefreshY);
         return (0, 0);
     }
 
@@ -745,7 +747,7 @@ public partial class MainWindow : Window
             // nothing detected and nothing picked
             if (useRefresh && _config.RefreshX != 0) { bx = _config.RefreshX; by = _config.RefreshY; }
             else if (_config.RollX != 0) { bx = _config.RollX; by = _config.RollY; }
-            else if (_config.RerollX != 0) { bx = _config.RerollX; by = _config.RerollY; }
+            else if (_config.RollX != 0) { bx = _config.RollX; by = _config.RollY; }
         }
         ClickAt(hwnd, bx + _rollOffsetX, by + _rollOffsetY, _clickMethod);
         AppendLog(useRefresh ? "Refreshed (kept team/year)." : "Rerolled (full).");
@@ -807,8 +809,9 @@ public partial class MainWindow : Window
         // the odds list is scrollable - tiers further down (prismatic, limit breaker,
         // generational, rivalry...) are hidden below the fold, so scroll and read again
         var seen = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
-        int scrollX = panel.X + (int)(panel.Width * 0.78);
-        int scrollY = panel.Y + (int)(panel.Height * 0.55);
+        // scroll over the odds list - use the THIS TEAM tab as the scroll position
+        int scrollX = _config.OddsTeamTabX >= 0 ? _config.OddsTeamTabX : panel.X + (int)(panel.Width * 0.78);
+        int scrollY = _config.OddsTeamTabY >= 0 ? _config.OddsTeamTabY : panel.Y + (int)(panel.Height * 0.55);
         for (int i = 0; i < 6; i++)
         {
             InputSim.ScrollWheel(scrollX, scrollY, -3);

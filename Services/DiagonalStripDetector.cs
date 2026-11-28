@@ -10,8 +10,8 @@ namespace HockeyRoller.Services;
 /// </summary>
 public static class DiagonalStripDetector
 {
-    const int DARK_MAX = 40;      // a pixel counts as "banner black"
-    const int LIGHT_MIN = 165;    // a pixel counts as "text white"
+    const int DARK_MAX = 28;      // a pixel counts as "banner black"
+    const int LIGHT_MIN = 190;    // a pixel counts as "text white"
 
     static bool IsDark(Color c) => Math.Max(c.R, Math.Max(c.G, c.B)) <= DARK_MAX;
     static bool IsLight(Color c) => Math.Min(c.R, Math.Min(c.G, c.B)) >= LIGHT_MIN;
@@ -73,7 +73,7 @@ public static class DiagonalStripDetector
             double minPixels = Math.Max(35, w * 0.12);
             // a real ribbon: enough text pixels, a real black band, and the text spans
             // a good part of the card
-            return whiteOnDark >= minPixels && darkRatio >= 0.03 && span >= 0.28;
+            return whiteOnDark >= minPixels && darkRatio >= 0.05 && span >= 0.32;
         }
         catch { return false; }
     }

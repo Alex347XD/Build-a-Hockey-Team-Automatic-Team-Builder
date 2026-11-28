@@ -31,9 +31,9 @@
                         <GroupBox Header="Capture Points (click 'Pick' then click on the game window)" Margin="0,0,0,10">
                             <StackPanel Margin="5">
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <TextBlock Text="Roll Button:" Width="140"/>
+                                    <TextBlock Text="Roll/Reroll Button:" Width="140"/>
                                     <TextBox x:Name="RollPtText" Width="160" IsReadOnly="True"/>
-                                    <Button Content="Pick Roll Button" Click="PickRoll_Click" Margin="5,0"/>
+                                    <Button Content="Pick Roll/Reroll Button" Click="PickRoll_Click" Margin="5,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <TextBlock Text="Card Region:" Width="140"/>
@@ -61,11 +61,6 @@
                         <GroupBox Header="Roll Types &amp; Odds (smart refresh vs reroll)" Margin="0,0,0,10">
                             <StackPanel Margin="5">
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <TextBlock Text="Reroll Button:" Width="140"/>
-                                    <TextBox x:Name="RerollPtText" Width="160" IsReadOnly="True"/>
-                                    <Button Content="Pick Reroll" Click="PickReroll_Click" Margin="5,0"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" Margin="0,2">
                                     <TextBlock Text="Refresh Button:" Width="140"/>
                                     <TextBox x:Name="RefreshPtText" Width="160" IsReadOnly="True"/>
                                     <Button Content="Pick Refresh" Click="PickRefresh_Click" Margin="5,0"/>
@@ -86,9 +81,9 @@
                                     <Button Content="Pick Odds Close" Click="PickOddsClose_Click" Margin="5,0"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
-                                    <TextBlock Text="THIS TEAM tab:" Width="140"/>
+                                    <TextBlock Text="Odds scroll pos:" Width="140"/>
                                     <TextBox x:Name="OddsTeamTabPtText" Width="160" IsReadOnly="True"/>
-                                    <Button Content="Pick THIS TEAM tab" Click="PickOddsTeamTab_Click" Margin="5,0"/>
+                                    <Button Content="Pick odds scroll pos" Click="PickOddsTeamTab_Click" Margin="5,0"/>
                                 </StackPanel>
                                 <TextBlock Text="The odds region should cover the refresh-odds list in the THIS TEAM column." FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,2">
