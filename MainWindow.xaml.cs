@@ -1141,7 +1141,9 @@ public partial class MainWindow : Window
         try
         {
             var prof = TierProfile.FromWindow(card, new Rectangle(0, 0, card.Width, card.Height));
-            return prof.RainbowBins >= 6 || prof.SpreadBins >= 8 || prof.Dispersion >= 0.45;
+            // shiny means a genuine rainbow border - require many distinct hues, don't
+            // accept a wide hue spread or mild dispersion (those false-positive shiny)
+            return prof.RainbowBins >= 8;
         }
         catch { return false; }
     }
